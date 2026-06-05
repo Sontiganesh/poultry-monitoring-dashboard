@@ -16,6 +16,7 @@ from src.tracker import PoultryTracker
 from src.analytics import PoultryAnalytics
 from src.zones import ZoneManager
 from src.visualization import Visualizer
+from src.reporting import ReportGenerator
 import uuid
 
 # Create a unique session ID for this browser tab so multiple users don't overwrite each other's frames!
@@ -170,9 +171,9 @@ def load_tracker(model_path, tracker_algo):
 
 # Determine video path
 if mode == "embed":
-    video_path = "assets/demo_video.mp4"
+    video_path = "videos/demo1.mp4"
 elif demo_video == "demo1":
-    video_path = "assets/demo_video.mp4"
+    video_path = "videos/demo1.mp4"
     if "demo_started" not in st.session_state:
         st.session_state.processing = True
         st.session_state.demo_started = True
