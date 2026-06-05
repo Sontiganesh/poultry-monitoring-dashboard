@@ -181,16 +181,33 @@ if st.session_state.processing and video_path is not None:
             
         fps = cap.get(cv2.CAP_PROP_FPS)
         if fps <= 0: fps = 30
-        frame_delay = 1.0 / fps
         
-        frame_skip = 5 # Run heavy AI models every 5th frame
+        # --- THE ULTIMATE CPU FIX ---
+        # Instead of trying to push 30 FPS through Streamlit (which burns 130% CPU),
+        # we hard-lock the app to 10 FPS. Security dashboards usually run at 5-10 FPS anyway.
+        target_fps = 10
+        frame_delay = 1.0 / target_fps
+        
+        # Calculate how many frames to skip reading so the video still plays at normal speed
+        video_frame_jump = max(1, int(fps / target_fps))
+        
+        frame_skip = 5 # Run heavy AI models every 5th processed frame (i.e., 2 times a second)
         frame_count = 0
         last_detections = []
         
         while cap.isOpened() and st.session_state.processing:
             loop_start = time.time()
-            ret, frame = cap.read()
-            if not ret:
+            
+            # Read multiple frames to fast-forward the video and maintain real-time speed
+            for _ in range(video_frame_jump):
+                ret, frame = cap.read()
+                if not ret:
+                    # For a month-long demo, the video MUST loop endlessly when it finishes!
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = cap.read()
+                    break
+                    
+            if not ret or frame is None:
                 break
                 
             frame = cv2.resize(frame, (854, 480))
