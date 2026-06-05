@@ -1,0 +1,13 @@
+[Unit]
+Description=Poultry MJPEG Video Streaming Server
+After=network.target
+
+[Service]
+User=sontiganesh
+WorkingDirectory=/home/sontiganesh/poultry-monitoring-dashboard
+ExecStart=/home/sontiganesh/poultry-monitoring-dashboard/venv/bin/python3 flask_stream.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

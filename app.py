@@ -19,6 +19,16 @@ from src.visualization import Visualizer
 from src.reporting import ReportGenerator
 from src import stream_server  # Flask MJPEG server auto-starts on import
 
+FRAME_PATH = "/tmp/poultry_latest_frame.jpg"
+
+def push_video_frame(jpeg_bytes: bytes):
+    """Write the latest frame to the shared file for the Flask stream server to pick up."""
+    try:
+        with open(FRAME_PATH, "wb") as f:
+            f.write(jpeg_bytes)
+    except Exception:
+        pass
+
 st.set_page_config(page_title="AI Poultry Monitoring", layout="wide")
 
 # Embedded Demo Mode Logic
@@ -303,9 +313,9 @@ if st.session_state.processing and video_path is not None:
                 frame_disp = visualizer.draw_zones(frame, zone_manager)
                 frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
                 
-                # Push to MJPEG server (NOT to Streamlit WebSocket — huge speed difference!)
+                # Write frame to shared file for the Flask MJPEG stream server
                 _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
-                stream_server.push_frame(buffer.tobytes())
+                push_video_frame(buffer.tobytes())
             
             # Update Heatmap only once every 3 seconds to save CPU and bandwidth
             if frame_count % (target_fps * 3) == 0:
