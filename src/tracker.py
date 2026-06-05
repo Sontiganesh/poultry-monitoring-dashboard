@@ -21,6 +21,7 @@ class PoultryTracker:
             config['track_high_thresh'] = 0.10
             config['track_low_thresh'] = 0.05
             config['new_track_thresh'] = 0.10
+            config['track_buffer'] = 150  # Keep IDs alive for 150 frames if lost
             
             with open(custom_yaml_path, 'w') as f:
                 yaml.dump(config, f)
