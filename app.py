@@ -189,29 +189,32 @@ if st.session_state.processing and video_path is not None:
         fps = cap.get(cv2.CAP_PROP_FPS)
         if fps <= 0: fps = 30
         
-        # Target 15 FPS for the golden mean between perfect smoothness and zero server lag
-        target_fps = 15
+        # Target 10 FPS for rock-solid stability and zero browser-side React DOM lag
+        target_fps = 10
         frame_delay = 1.0 / target_fps
         
         # Calculate how many frames to skip reading so the video still plays at normal speed
         video_frame_jump = max(1, int(fps / target_fps))
         
-        frame_skip = 5 # Run heavy AI models every 5th processed frame (i.e., 3 times a second)
+        frame_skip = 5 # Run heavy AI models every 5th processed frame (i.e., 2 times a second)
         frame_count = 0
         last_detections = []
         
         while cap.isOpened() and st.session_state.processing:
             loop_start = time.time()
             
-            # Read multiple frames to fast-forward the video and maintain real-time speed
-            for _ in range(video_frame_jump):
-                ret, frame = cap.read()
-                if not ret:
-                    # For a month-long demo, the video MUST loop endlessly when it finishes!
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    ret, frame = cap.read()
+            # Use OpenCV's grab() to skip frames instantly without decoding them into RAM!
+            # This is a massive CPU optimization over using cap.read() in a loop.
+            for _ in range(video_frame_jump - 1):
+                if not cap.grab():
                     break
                     
+            ret, frame = cap.read()
+            if not ret:
+                # For a month-long demo, the video MUST loop endlessly when it finishes!
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = cap.read()
+                
             if not ret or frame is None:
                 break
                 
@@ -294,12 +297,12 @@ if st.session_state.processing and video_path is not None:
             # engine, we compress the frame to a tiny JPEG byte string in <3 milliseconds!
             
             # 1. Update Video Feed EVERY frame for buttery smooth 24 FPS playback
-            _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
+            _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 30])
             video_placeholder.image(buffer.tobytes(), use_container_width=True)
             
             # 2. Update Heatmap occasionally to save massive WebSocket bandwidth
             if frame_count % 24 == 0:
-                _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
+                _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 30])
                 heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
             
             # 3. Update Charts & Metrics at 1 FPS (Every 30 frames)
