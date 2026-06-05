@@ -17,13 +17,7 @@ from src.analytics import PoultryAnalytics
 from src.zones import ZoneManager
 from src.visualization import Visualizer
 from src.reporting import ReportGenerator
-from src import stream_server
-
-# Start the MJPEG streaming server once (daemon thread, port 8502)
-# This runs independently of Streamlit and streams video like a real IP camera.
-if "stream_server_started" not in st.session_state:
-    stream_server.start_stream_server(port=8502)
-    st.session_state.stream_server_started = True
+from src import stream_server  # Flask MJPEG server auto-starts on import
 
 st.set_page_config(page_title="AI Poultry Monitoring", layout="wide")
 

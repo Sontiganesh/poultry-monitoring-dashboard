@@ -62,3 +62,17 @@ def start_stream_server(port: int = 8502):
     )
     server_thread.start()
     return server_thread
+
+# --- AUTO-START AT IMPORT TIME ---
+# Use a module-level flag (not st.session_state) so Flask starts exactly ONCE
+# the moment this module is imported by app.py — regardless of browser visits.
+_server_started = False
+
+def ensure_started(port: int = 8502):
+    global _server_started
+    if not _server_started:
+        _server_started = True
+        start_stream_server(port=port)
+
+# Start immediately on import
+ensure_started()
