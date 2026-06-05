@@ -21,12 +21,14 @@ demo_shed = query_params.get("shed")
 is_embedded = False
 auto_video_path = None
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 if demo_video:
     is_embedded = True
-    auto_video_path = f"videos/{demo_video}.mp4"
+    auto_video_path = os.path.join(BASE_DIR, "videos", f"{demo_video}.mp4")
 elif demo_shed:
     is_embedded = True
-    auto_video_path = f"videos/shed{demo_shed}.mp4"
+    auto_video_path = os.path.join(BASE_DIR, "videos", f"shed{demo_shed}.mp4")
 
 if is_embedded and 'auto_started' not in st.session_state:
     st.session_state.processing = True
