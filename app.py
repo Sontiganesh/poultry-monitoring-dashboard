@@ -187,7 +187,7 @@ if mode == "video_only":
     SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
     video_placeholder = st.empty()
     video_placeholder.markdown(
-        f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="width: 100vw; height: 100vh; object-fit: contain;">',
+        f'<div style="width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; background-color: #0E1117;"><img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="max-width: 100%; max-height: 100%; object-fit: contain;"></div>',
         unsafe_allow_html=True
     )
 else:
@@ -428,7 +428,7 @@ if st.session_state.processing and video_path is not None:
         cap.release()
         
     # Generate Reports at the end
-    if not st.session_state.processing:
+    if not st.session_state.processing and mode != "video_only":
         with report_placeholder.container():
             st.subheader("Export Reports")
             rg = ReportGenerator(analytics)
