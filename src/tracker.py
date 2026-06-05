@@ -1,5 +1,5 @@
 import cv2
-from ultralytics import YOLO
+from ultralytics import YOLO, YOLOWorld
 from ultralytics.utils import ROOT
 import yaml
 import os
@@ -30,8 +30,12 @@ class PoultryTracker:
             print(f"Failed to generate custom tracker config, falling back to default: {e}")
             self.tracker_type = f"{tracker_algo}.yaml"
 
-        # Initialize YOLOv8 model. 'yolov8n.pt' will be downloaded automatically if not present.
-        self.model = YOLO(model_path)
+        # Initialize YOLOv8 model
+        if 'world' in model_path.lower():
+            self.model = YOLOWorld(model_path)
+            self.model.set_classes(["person", "chicken", "feeding pot", "water pot"])
+        else:
+            self.model = YOLO(model_path)
 
         
     def process_frame(self, frame, conf_threshold=0.15, classes=None):
@@ -47,6 +51,7 @@ class PoultryTracker:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = float(box.conf[0])
                 class_id = int(box.cls[0]) if box.cls is not None else 14
+                class_name = self.model.names[class_id]
                 
                 # Ensure it has an ID
                 track_id = int(box.id[0]) if box.id is not None else None
@@ -55,6 +60,7 @@ class PoultryTracker:
                     detections.append({
                         "track_id": track_id,
                         "class_id": class_id,
+                        "class_name": class_name,
                         "box": (x1, y1, x2, y2),
                         "conf": conf,
                         "center": ((x1 + x2) // 2, (y1 + y2) // 2)

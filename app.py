@@ -34,7 +34,13 @@ elif input_source == "RTSP Stream":
     video_path = st.sidebar.text_input("RTSP URL", "rtsp://localhost:8554/stream")
 
 st.sidebar.header("Detection Settings")
-model_size = st.sidebar.selectbox("Model Size", ["Nano (yolov8n.pt - Fast)", "Small (yolov8s.pt - Better)", "Medium (yolov8m.pt - Best/Slow)"])
+model_size = st.sidebar.selectbox("Model Size", [
+    "Nano (yolov8n.pt - Fast)", 
+    "Small (yolov8s.pt - Better)", 
+    "Medium (yolov8m.pt - Best/Slow)",
+    "World Small (yolov8s-world.pt - Zero-Shot)",
+    "World Medium (yolov8m-worldv2.pt - Zero-Shot)"
+])
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.10, 0.05)
 target_classes = None
 
@@ -44,7 +50,9 @@ selected_tracker = "botsort" if "BoTSORT" in tracker_algo_ui else "bytetrack"
 model_path_map = {
     "Nano (yolov8n.pt - Fast)": "yolov8n.pt",
     "Small (yolov8s.pt - Better)": "yolov8s.pt",
-    "Medium (yolov8m.pt - Best/Slow)": "yolov8m.pt"
+    "Medium (yolov8m.pt - Best/Slow)": "yolov8m.pt",
+    "World Small (yolov8s-world.pt - Zero-Shot)": "yolov8s-world.pt",
+    "World Medium (yolov8m-worldv2.pt - Zero-Shot)": "yolov8m-worldv2.pt"
 }
 selected_model_path = model_path_map[model_size]
 
@@ -154,8 +162,9 @@ if st.session_state.processing and video_path is not None:
                 x1, y1, x2, y2 = det["box"]
                 box_area = (x2 - x1) * (y2 - y1)
                 class_id = det.get("class_id", 14)
+                class_name = det.get("class_name", "bird")
                 zone = zone_manager.get_zone(cx, cy)
-                analytics.update(track_id, cx, cy, zone, class_id=class_id, box_area=box_area)
+                analytics.update(track_id, cx, cy, zone, class_id=class_id, class_name=class_name, box_area=box_area)
                 
             # Run flock-level analytics (huddling)
             analytics.analyze_flock()

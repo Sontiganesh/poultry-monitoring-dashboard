@@ -32,7 +32,9 @@ class Visualizer:
             cx, cy = det["center"]
             conf = det["conf"]
             class_id = det.get("class_id", 14)
-            is_human = (class_id == 0)
+            class_name = det.get("class_name", "bird")
+            is_human = (class_name == "person")
+            is_pot = ("pot" in class_name)
             
             # Update heatmap
             # Add a Gaussian blob
@@ -43,6 +45,12 @@ class Visualizer:
             if is_human:
                 color = (0, 165, 255) # BGR Orange for human
                 status = "Human"
+            elif is_pot:
+                if "water" in class_name:
+                    color = (255, 255, 0) # BGR Cyan for water pot
+                else:
+                    color = (255, 0, 255) # BGR Magenta for feeding pot
+                status = "Pot"
             else:
                 color = (0, 255, 0)
                 if track_id in analytics.stats and analytics.stats[track_id]["is_inactive"]:
@@ -52,7 +60,7 @@ class Visualizer:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             
             # Draw label
-            display_name = custom_tags.get(str(track_id), custom_tags.get(track_id, f"ID:{track_id}"))
+            display_name = custom_tags.get(str(track_id), custom_tags.get(track_id, f"{class_name.capitalize()}:{track_id}"))
             label = f"{display_name} {conf:.2f} ({status})"
             cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             

@@ -30,7 +30,16 @@ class PoultryAnalytics:
         self.HUDDLE_MIN_BIRDS = 4
         self.last_huddle_alert = 0
         
-    def update(self, track_id, x, y, zone, class_id=14, box_area=0):
+    def _is_chicken(self, class_name):
+        return class_name in ["chicken", "bird"]
+        
+    def _is_human(self, class_name):
+        return class_name == "person"
+        
+    def _is_pot(self, class_name):
+        return "pot" in class_name
+        
+    def update(self, track_id, x, y, zone, class_id=14, class_name="bird", box_area=0):
         current_time = time.time()
         
         if track_id not in self.history:
@@ -48,7 +57,8 @@ class PoultryAnalytics:
                 "is_erratic": False,
                 "severe_lethargy_triggered": False,
                 "avg_box_area": box_area,
-                "class_id": class_id
+                "class_id": class_id,
+                "class_name": class_name
             }
             
         history = self.history[track_id]
@@ -134,7 +144,8 @@ class PoultryAnalytics:
         active_positions = []
         for tid, history in self.history.items():
             if history and (current_time - history[-1]["timestamp"] < 1.0):
-                active_positions.append((tid, history[-1]["x"], history[-1]["y"]))
+                if self._is_chicken(self.stats[tid].get("class_name", "bird")):
+                    active_positions.append((tid, history[-1]["x"], history[-1]["y"]))
                 
         # Check Huddling
         huddle_groups = []
@@ -180,6 +191,10 @@ class PoultryAnalytics:
                 
     def _calculate_activity_score(self, track_id):
         stats = self.stats[track_id]
+        if self._is_pot(stats.get("class_name", "")):
+            stats["activity_score"] = 0
+            return
+            
         # simple heuristic: 100 - (inactive time penalty) + (distance bonus)
         # For demo: just map distance to a score 0-100
         score = min(100, int((stats["total_distance"] / 200) * 10) + (80 if not stats["is_inactive"] else 40))
@@ -189,26 +204,26 @@ class PoultryAnalytics:
         current_time = time.time()
         active_track_ids = [tid for tid, h in self.history.items() if h and (current_time - h[-1]["timestamp"] < 2.0)]
         
-        total_chickens = sum(1 for tid in active_track_ids if self.stats[tid].get("class_id", 14) != 0)
-        total_humans = sum(1 for tid in active_track_ids if self.stats[tid].get("class_id", 14) == 0)
+        total_chickens = sum(1 for tid in active_track_ids if self._is_chicken(self.stats[tid].get("class_name", "bird")))
+        total_humans = sum(1 for tid in active_track_ids if self._is_human(self.stats[tid].get("class_name", "bird")))
         
-        active = sum(1 for tid in active_track_ids if not self.stats[tid]["is_inactive"] and self.stats[tid].get("class_id", 14) != 0)
+        active = sum(1 for tid in active_track_ids if not self.stats[tid]["is_inactive"] and self._is_chicken(self.stats[tid].get("class_name", "bird")))
         inactive = total_chickens - active
         
-        chicken_scores = [self.stats[tid]["activity_score"] for tid in active_track_ids if self.stats[tid].get("class_id", 14) != 0]
+        chicken_scores = [self.stats[tid]["activity_score"] for tid in active_track_ids if self._is_chicken(self.stats[tid].get("class_name", "bird"))]
         avg_score = int(np.mean(chicken_scores)) if chicken_scores else 0
         
         # most visited zone (chickens only)
         zone_counts = {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0}
         for tid in active_track_ids:
             s = self.stats[tid]
-            if s.get("class_id", 14) != 0:
+            if self._is_chicken(s.get("class_name", "bird")):
                 for z, count in s["zone_visits"].items():
                     zone_counts[z] += count
         most_visited = max(zone_counts, key=zone_counts.get) if total_chickens > 0 and sum(zone_counts.values()) > 0 else "None"
         
         # Size Uniformity (chickens only)
-        areas = [self.stats[tid].get("avg_box_area", 0) for tid in active_track_ids if self.stats[tid].get("avg_box_area", 0) > 0 and self.stats[tid].get("class_id", 14) != 0]
+        areas = [self.stats[tid].get("avg_box_area", 0) for tid in active_track_ids if self.stats[tid].get("avg_box_area", 0) > 0 and self._is_chicken(self.stats[tid].get("class_name", "bird"))]
         uniformity = "N/A"
         if len(areas) > 1:
             mean_area = np.mean(areas)
