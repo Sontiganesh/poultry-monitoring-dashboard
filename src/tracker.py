@@ -39,10 +39,10 @@ class PoultryTracker:
 
         
     def process_frame(self, frame, conf_threshold=0.15, classes=None):
-        # Run tracking on the frame
-        # For demo purposes, we can optionally filter by classes (e.g. 14 for bird)
-        # and adjust the confidence threshold.
-        results = self.model.track(frame, persist=True, classes=classes, conf=conf_threshold, tracker=self.tracker_type, verbose=False)
+        # To drastically improve accuracy on dense flocks without fine-tuning:
+        # 1. imgsz=1280 (prevents tiny chickens in the back from blurring into the background)
+        # 2. iou=0.85 (allows highly overlapping bounding boxes, preventing NMS from deleting packed chickens)
+        results = self.model.track(frame, persist=True, classes=classes, conf=conf_threshold, tracker=self.tracker_type, verbose=False, imgsz=1280, iou=0.85)
         
         detections = []
         if len(results) > 0 and results[0].boxes is not None:
