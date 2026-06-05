@@ -288,19 +288,20 @@ if st.session_state.processing and video_path is not None:
             # Show heatmap optionally
             heatmap = visualizer.get_heatmap_overlay(frame_disp)
             
-            # Convert to RGB for Streamlit
+            # Convert to RGB for Streamlit (Video only)
             frame_rgb = cv2.cvtColor(frame_disp, cv2.COLOR_BGR2RGB)
-            heatmap_rgb = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
             
             # --- UI Rendering Optimizations ---
-            # Streamlit cannot push 30 WebSockets payloads a second without burning the CPU.
             
-            # 1. Update Video Feed at 15 FPS (Every 2 frames)
-            if frame_count % 2 == 0:
-                video_placeholder.image(frame_rgb, channels="RGB", use_container_width=True)
+            # 1. Update Video Feed EVERY frame for buttery smooth 24 FPS playback
+            video_placeholder.image(frame_rgb, channels="RGB", use_container_width=True)
+            
+            # 2. Update Heatmap occasionally to save massive WebSocket bandwidth
+            if frame_count % 24 == 0:
+                heatmap_rgb = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
                 heatmap_placeholder.image(heatmap_rgb, channels="RGB", use_container_width=True)
             
-            # 2. Update Charts & Metrics at 1 FPS (Every 30 frames)
+            # 3. Update Charts & Metrics at 1 FPS (Every 30 frames)
             if frame_count % 30 == 0:
                 stats = analytics.get_summary_stats()
                 
@@ -346,10 +347,8 @@ if st.session_state.processing and video_path is not None:
                 
             elapsed = time.time() - loop_start
             
-            # Guarantee AT LEAST 50ms of sleep every single loop to forcefully drop CPU utilization.
-            # If we don't do this, Streamlit will just run infinitely fast and pin the CPU at 100%
-            sleep_time = max(0.05, frame_delay - elapsed)
-            time.sleep(sleep_time)
+            if elapsed < frame_delay:
+                time.sleep(frame_delay - elapsed)
                 
         cap.release()
         
