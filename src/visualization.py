@@ -7,14 +7,17 @@ class Visualizer:
         self.heatmap_layer = None
         
     def draw_zones(self, frame, zone_manager):
+        # Draw dynamic zones as transparent overlays
         overlay = frame.copy()
-        for name, bounds in zone_manager.zones.items():
-            color = bounds["color"]
-            cv2.rectangle(overlay, (bounds["x_min"], bounds["y_min"]), 
-                          (bounds["x_max"], bounds["y_max"]), color, -1)
-            cv2.putText(frame, name, (bounds["x_min"] + 10, bounds["y_min"] + 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-        # alpha blend
+        
+        for px, py in zone_manager.pots["feed"]:
+            cv2.circle(overlay, (px, py), zone_manager.ZONE_RADIUS, (255, 0, 255), -1)
+            cv2.putText(overlay, "Feed Zone", (px - 40, py - zone_manager.ZONE_RADIUS - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2)
+            
+        for px, py in zone_manager.pots["water"]:
+            cv2.circle(overlay, (px, py), zone_manager.ZONE_RADIUS, (255, 255, 0), -1)
+            cv2.putText(overlay, "Water Zone", (px - 40, py - zone_manager.ZONE_RADIUS - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+            
         cv2.addWeighted(overlay, 0.2, frame, 0.8, 0, frame)
         return frame
         

@@ -42,7 +42,11 @@ model_size = st.sidebar.selectbox("Model Size", [
     "World Medium (yolov8m-worldv2.pt - Zero-Shot)"
 ])
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.10, 0.05)
-target_classes = None
+
+if 'world' in model_size.lower():
+    target_classes = None
+else:
+    target_classes = [0, 14] # 0 = person, 14 = bird
 
 tracker_algo_ui = st.sidebar.selectbox("Tracking Algorithm", ["ByteTrack (Faster)", "BoTSORT (More Accurate)"])
 selected_tracker = "botsort" if "BoTSORT" in tracker_algo_ui else "bytetrack"
@@ -155,7 +159,10 @@ if st.session_state.processing and video_path is not None:
             # Process Frame
             detections = tracker.process_frame(frame, conf_threshold=conf_threshold, classes=target_classes)
             
-            # Update Analytics
+            # Update dynamic zones based on detected pots
+            zone_manager.update_pots(detections)
+            
+            # Update analytics
             for det in detections:
                 track_id = det["track_id"]
                 cx, cy = det["center"]

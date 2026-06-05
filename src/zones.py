@@ -4,32 +4,37 @@ class ZoneManager:
     def __init__(self, frame_width, frame_height):
         self.width = frame_width
         self.height = frame_height
+        self.pots = {"feed": [], "water": []}
+        self.ZONE_RADIUS = 150 # pixels radius around a pot to count as a zone
         
-        # Define relative zones (for demo purposes)
-        # Feed Zone: Left 25%
-        # Water Zone: Right 25%
-        # Rest Zone: Center Bottom (30% to 70% width, 60% to 100% height)
-        self.zones = {
-            "Feed Zone": {
-                "x_min": 0, "x_max": int(self.width * 0.25),
-                "y_min": 0, "y_max": self.height,
-                "color": (0, 255, 0) # Green
-            },
-            "Water Zone": {
-                "x_min": int(self.width * 0.75), "x_max": self.width,
-                "y_min": 0, "y_max": self.height,
-                "color": (255, 0, 0) # Blue
-            },
-            "Rest Zone": {
-                "x_min": int(self.width * 0.3), "x_max": int(self.width * 0.7),
-                "y_min": int(self.height * 0.6), "y_max": self.height,
-                "color": (0, 165, 255) # Orange
-            }
-        }
-        
+    def update_pots(self, detections):
+        self.pots["feed"] = []
+        self.pots["water"] = []
+        for det in detections:
+            cname = det.get("class_name", "")
+            if "pot" in cname:
+                cx, cy = det["center"]
+                if "water" in cname:
+                    self.pots["water"].append((cx, cy))
+                else:
+                    self.pots["feed"].append((cx, cy))
+
     def get_zone(self, x, y):
-        for name, bounds in self.zones.items():
-            if (bounds["x_min"] <= x <= bounds["x_max"] and 
-                bounds["y_min"] <= y <= bounds["y_max"]):
-                return name
-        return None
+        # Find nearest pot
+        min_dist_feed = float('inf')
+        for px, py in self.pots["feed"]:
+            dist = np.sqrt((x-px)**2 + (y-py)**2)
+            if dist < min_dist_feed: min_dist_feed = dist
+            
+        min_dist_water = float('inf')
+        for px, py in self.pots["water"]:
+            dist = np.sqrt((x-px)**2 + (y-py)**2)
+            if dist < min_dist_water: min_dist_water = dist
+            
+        if min_dist_feed < self.ZONE_RADIUS and min_dist_feed <= min_dist_water:
+            return "Feed Zone"
+        if min_dist_water < self.ZONE_RADIUS:
+            return "Water Zone"
+            
+        # If no pots are near, or standard YOLO model is used (no pots detected), default to Rest Zone
+        return "Rest Zone"
