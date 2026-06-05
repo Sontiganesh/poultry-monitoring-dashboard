@@ -79,7 +79,8 @@ demo_shed = query_params.get("shed")
 
 # Determine video path
 if mode in ["embed", "video_only"]:
-    video_path = f"videos/{demo_video}.mp4" if demo_video else "videos/demo1.mp4"
+    is_embedded = True
+    auto_video_path = os.path.join(BASE_DIR, "videos", f"{demo_video}.mp4") if demo_video else os.path.join(BASE_DIR, "videos", "demo1.mp4")
 elif demo_video:
     is_embedded = True
     auto_video_path = os.path.join(BASE_DIR, "videos", f"{demo_video}.mp4")
