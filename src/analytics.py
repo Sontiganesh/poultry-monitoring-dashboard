@@ -30,7 +30,7 @@ class PoultryAnalytics:
         self.HUDDLE_MIN_BIRDS = 4
         self.last_huddle_alert = 0
         
-    def update(self, track_id, x, y, zone, box_area=0):
+    def update(self, track_id, x, y, zone, class_id=14, box_area=0):
         current_time = time.time()
         
         if track_id not in self.history:
@@ -47,7 +47,8 @@ class PoultryAnalytics:
                 "activity_score": 100,
                 "is_erratic": False,
                 "severe_lethargy_triggered": False,
-                "avg_box_area": box_area
+                "avg_box_area": box_area,
+                "class_id": class_id
             }
             
         history = self.history[track_id]
@@ -185,20 +186,25 @@ class PoultryAnalytics:
         stats["activity_score"] = min(100, max(0, score))
         
     def get_summary_stats(self):
-        total_chickens = len(self.stats)
-        active = sum(1 for s in self.stats.values() if not s["is_inactive"])
-        inactive = total_chickens - active
-        avg_score = int(np.mean([s["activity_score"] for s in self.stats.values()])) if total_chickens > 0 else 0
+        total_chickens = sum(1 for s in self.stats.values() if s.get("class_id", 14) == 14)
+        total_humans = sum(1 for s in self.stats.values() if s.get("class_id", 14) == 0)
         
-        # most visited zone
+        active = sum(1 for s in self.stats.values() if not s["is_inactive"] and s.get("class_id", 14) == 14)
+        inactive = total_chickens - active
+        
+        chicken_scores = [s["activity_score"] for s in self.stats.values() if s.get("class_id", 14) == 14]
+        avg_score = int(np.mean(chicken_scores)) if chicken_scores else 0
+        
+        # most visited zone (chickens only)
         zone_counts = {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0}
         for s in self.stats.values():
-            for z, count in s["zone_visits"].items():
-                zone_counts[z] += count
+            if s.get("class_id", 14) == 14:
+                for z, count in s["zone_visits"].items():
+                    zone_counts[z] += count
         most_visited = max(zone_counts, key=zone_counts.get) if total_chickens > 0 and sum(zone_counts.values()) > 0 else "None"
         
-        # Size Uniformity
-        areas = [s.get("avg_box_area", 0) for s in self.stats.values() if s.get("avg_box_area", 0) > 0]
+        # Size Uniformity (chickens only)
+        areas = [s.get("avg_box_area", 0) for s in self.stats.values() if s.get("avg_box_area", 0) > 0 and s.get("class_id", 14) == 14]
         uniformity = "N/A"
         if len(areas) > 1:
             mean_area = np.mean(areas)
@@ -210,6 +216,7 @@ class PoultryAnalytics:
         
         return {
             "total_chickens": total_chickens,
+            "total_humans": total_humans,
             "active": active,
             "inactive": inactive,
             "avg_activity_score": avg_score,

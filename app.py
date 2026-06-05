@@ -37,7 +37,7 @@ st.sidebar.header("Detection Settings")
 model_size = st.sidebar.selectbox("Model Size", ["Nano (yolov8n.pt - Fast)", "Small (yolov8s.pt - Better)", "Medium (yolov8m.pt - Best/Slow)"])
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.10, 0.05)
 filter_birds = st.sidebar.checkbox("Filter by 'Bird' class only", value=False)
-target_classes = [14] if filter_birds else None
+target_classes = [14] if filter_birds else [0, 14] # 0 = person, 14 = bird
 
 tracker_algo_ui = st.sidebar.selectbox("Tracking Algorithm", ["ByteTrack (Faster)", "BoTSORT (More Accurate)"])
 selected_tracker = "botsort" if "BoTSORT" in tracker_algo_ui else "bytetrack"
@@ -50,6 +50,15 @@ model_path_map = {
 selected_model_path = model_path_map[model_size]
 
 start_button = st.sidebar.button("Start Processing")
+
+st.sidebar.header("Identity Tag Manager")
+st.sidebar.markdown("Map IDs to names (e.g. `5:Worker John`)")
+tag_input = st.sidebar.text_area("Custom Tags", "")
+custom_tags = {}
+for line in tag_input.split('\n'):
+    if ':' in line:
+        k, v = line.split(':', 1)
+        custom_tags[k.strip()] = v.strip()
 
 # Stop processing using session state since button click reloads
 if 'processing' not in st.session_state:
@@ -83,9 +92,10 @@ with col1:
 with col2:
     st.subheader("Analytics Dashboard")
     # Metric placeholders
-    m_col1, m_col2 = st.columns(2)
+    m_col1, m_col2, m_col_human = st.columns(3)
     m_total = m_col1.empty()
     m_active = m_col2.empty()
+    m_humans = m_col_human.empty()
     
     m_col3, m_col4 = st.columns(2)
     m_score = m_col3.empty()
@@ -152,7 +162,7 @@ if st.session_state.processing and video_path is not None:
             
             # Visualization
             frame_disp = visualizer.draw_zones(frame, zone_manager)
-            frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics)
+            frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
             
             # Show heatmap optionally
             heatmap = visualizer.get_heatmap_overlay(frame_disp)
@@ -169,6 +179,7 @@ if st.session_state.processing and video_path is not None:
             
             # Use columns inside the placeholders
             m_total.metric("Total Chickens", stats["total_chickens"])
+            m_humans.metric("Humans Detected", stats["total_humans"])
             m_active.metric("Active / Inactive", f"{stats['active']} / {stats['inactive']}")
             m_score.metric("Avg Activity Score", f"{stats['avg_activity_score']}%")
             m_zone.metric("Most Visited Zone", stats["most_visited_zone"])

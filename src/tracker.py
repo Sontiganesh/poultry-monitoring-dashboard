@@ -45,6 +45,7 @@ class PoultryTracker:
             for box in boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 conf = float(box.conf[0])
+                class_id = int(box.cls[0]) if box.cls is not None else 14
                 
                 # Ensure it has an ID
                 track_id = int(box.id[0]) if box.id is not None else None
@@ -52,6 +53,7 @@ class PoultryTracker:
                 if track_id is not None:
                     detections.append({
                         "track_id": track_id,
+                        "class_id": class_id,
                         "box": (x1, y1, x2, y2),
                         "conf": conf,
                         "center": ((x1 + x2) // 2, (y1 + y2) // 2)

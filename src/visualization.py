@@ -18,7 +18,10 @@ class Visualizer:
         cv2.addWeighted(overlay, 0.2, frame, 0.8, 0, frame)
         return frame
         
-    def draw_tracking(self, frame, detections, analytics):
+    def draw_tracking(self, frame, detections, analytics, custom_tags=None):
+        if custom_tags is None:
+            custom_tags = {}
+            
         # Initialize heatmap if needed
         if self.heatmap_layer is None or self.heatmap_layer.shape[:2] != frame.shape[:2]:
             self.heatmap_layer = np.zeros(frame.shape[:2], dtype=np.float32)
@@ -28,6 +31,8 @@ class Visualizer:
             x1, y1, x2, y2 = det["box"]
             cx, cy = det["center"]
             conf = det["conf"]
+            class_id = det.get("class_id", 14)
+            is_human = (class_id == 0)
             
             # Update heatmap
             # Add a Gaussian blob
@@ -35,15 +40,20 @@ class Visualizer:
             
             # Draw box
             status = "Active"
-            color = (0, 255, 0)
-            if track_id in analytics.stats and analytics.stats[track_id]["is_inactive"]:
-                status = "Inactive"
-                color = (0, 0, 255) # Red for inactive
+            if is_human:
+                color = (255, 165, 0) # Orange for human
+                status = "Human"
+            else:
+                color = (0, 255, 0)
+                if track_id in analytics.stats and analytics.stats[track_id]["is_inactive"]:
+                    status = "Inactive"
+                    color = (0, 0, 255) # Red for inactive
                 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             
             # Draw label
-            label = f"ID:{track_id} {conf:.2f} ({status})"
+            display_name = custom_tags.get(str(track_id), custom_tags.get(track_id, f"ID:{track_id}"))
+            label = f"{display_name} {conf:.2f} ({status})"
             cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
             # Draw trail
