@@ -270,36 +270,42 @@ if st.session_state.processing and video_path is not None:
             frame_rgb = cv2.cvtColor(frame_disp, cv2.COLOR_BGR2RGB)
             heatmap_rgb = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
             
-            video_placeholder.image(frame_rgb, channels="RGB", use_container_width=True)
-            heatmap_placeholder.image(heatmap_rgb, channels="RGB", use_container_width=True)
+            # --- UI Rendering Optimizations ---
+            # Streamlit cannot push 30 WebSockets payloads a second without burning the CPU.
             
-            # Update Dashboard
-            stats = analytics.get_summary_stats()
+            # 1. Update Video Feed at 15 FPS (Every 2 frames)
+            if frame_count % 2 == 0:
+                video_placeholder.image(frame_rgb, channels="RGB", use_container_width=True)
+                heatmap_placeholder.image(heatmap_rgb, channels="RGB", use_container_width=True)
             
-            # Use columns inside the placeholders
-            m_total.metric("Total Chickens", stats["total_chickens"])
-            m_humans.metric("Humans Detected", stats["total_humans"])
-            m_active.metric("Active / Inactive", f"{stats['active']} / {stats['inactive']}")
-            m_score.metric("Avg Activity Score", f"{stats['avg_activity_score']}%")
-            m_zone.metric("Most Visited Zone", stats["most_visited_zone"])
-            m_alerts.metric("Alerts", stats["alert_count"])
-            m_uniformity.metric("Size Uniformity", stats["size_uniformity"])
-            
-            # Update Charts
-            if stats["timeline"]["timestamps"]:
-                # Zone utilization chart
-                zone_df = pd.DataFrame({
-                    "Feed Zone": stats["timeline"]["feed_zone"],
-                    "Water Zone": stats["timeline"]["water_zone"],
-                    "Rest Zone": stats["timeline"]["rest_zone"]
-                }, index=stats["timeline"]["timestamps"])
-                zone_chart_placeholder.line_chart(zone_df)
+            # 2. Update Charts & Metrics at 1 FPS (Every 30 frames)
+            if frame_count % 30 == 0:
+                stats = analytics.get_summary_stats()
                 
-                # Activity trend chart
-                act_df = pd.DataFrame({
-                    "Avg Activity": stats["timeline"]["avg_activity"]
-                }, index=stats["timeline"]["timestamps"])
-                activity_chart_placeholder.line_chart(act_df)
+                # Use columns inside the placeholders
+                m_total.metric("Total Chickens", stats["total_chickens"])
+                m_humans.metric("Humans Detected", stats["total_humans"])
+                m_active.metric("Active / Inactive", f"{stats['active']} / {stats['inactive']}")
+                m_score.metric("Avg Activity Score", f"{stats['avg_activity_score']}%")
+                m_zone.metric("Most Visited Zone", stats["most_visited_zone"])
+                m_alerts.metric("Alerts", stats["alert_count"])
+                m_uniformity.metric("Size Uniformity", stats["size_uniformity"])
+                
+                # Update Charts
+                if stats["timeline"]["timestamps"]:
+                    # Zone utilization chart
+                    zone_df = pd.DataFrame({
+                        "Feed Zone": stats["timeline"]["feed_zone"],
+                        "Water Zone": stats["timeline"]["water_zone"],
+                        "Rest Zone": stats["timeline"]["rest_zone"]
+                    }, index=stats["timeline"]["timestamps"])
+                    zone_chart_placeholder.line_chart(zone_df)
+                    
+                    # Activity trend chart
+                    act_df = pd.DataFrame({
+                        "Avg Activity": stats["timeline"]["avg_activity"]
+                    }, index=stats["timeline"]["timestamps"])
+                    activity_chart_placeholder.line_chart(act_df)
             
             # Alerts
             if analytics.alerts:
