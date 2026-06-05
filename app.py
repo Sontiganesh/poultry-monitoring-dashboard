@@ -38,14 +38,37 @@ def push_video_frame(jpeg_bytes: bytes):
 
 st.set_page_config(page_title="AI Poultry Monitoring", layout="wide")
 
-# Embedded Demo Mode Logic
+# Parse Query Parameters
 query_params = st.query_params
-demo_video = query_params.get("video")
-demo_shed = query_params.get("shed")
+mode = query_params.get("mode")
+
+# --- EMBED MODE CONFIGURATION ---
+if mode == "embed":
+    # Hide sidebar and header/footer for clean iframe embedding
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] { display: none !important; }
+            header { display: none !important; }
+            footer { display: none !important; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # Auto-play demo video
+    if "auto_played" not in st.session_state:
+        st.session_state.processing = True
+        st.session_state.auto_played = True
+
+# --- SIDEBAR & UPLOAD CONTROLS ---
+# We still run this code, but it's hidden by CSS if mode=embed
+st.sidebar.image("assets/logo.png", use_container_width=True)
+st.sidebar.title("Configuration")
 is_embedded = False
 auto_video_path = None
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+demo_video = query_params.get("video")
+demo_shed = query_params.get("shed")
 
 if demo_video:
     is_embedded = True
@@ -144,49 +167,36 @@ def load_zone_detector():
 def load_tracker(model_path, tracker_algo):
     return PoultryTracker(model_path, tracker_algo)
 
+# Determine video path
+if mode == "embed":
+    video_path = "assets/demo_video.mp4"
+elif demo_video == "demo1":
+    video_path = "assets/demo_video.mp4"
+    if "demo_started" not in st.session_state:
+        st.session_state.processing = True
+        st.session_state.demo_started = True
+elif input_source == "Upload Video" and uploaded_file is not None:
+    tfile = tempfile.NamedTemporaryFile(delete=False)
+    tfile.write(uploaded_file.read())
+    video_path = tfile.name
+
 if 'analytics' not in st.session_state:
     st.session_state.analytics = PoultryAnalytics()
     
-# Embed mode logic
-video_only = query_params.get("video_only") == "true"
-SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
+# Layout for Video and Dashboard
+col1, col2 = st.columns([2, 1])
 
-if video_only:
-    # --- FULL-SCREEN EMBED MODE ---
-    # Hide all Streamlit padding, headers, and footers for a perfect iframe fit
-    st.markdown("""
-        <style>
-            .block-container { padding: 0 !important; max-width: 100% !important; }
-            header { display: none !important; }
-            footer { display: none !important; }
-            [data-testid="stSidebar"] { display: none !important; }
-        </style>
-    """, unsafe_allow_html=True)
+with col1:
+    st.subheader("Live Feed")
+    # Use native MJPEG stream via HTML <img> tag.
+    # The session ID completely isolates each user's video feed!
+    SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
     
     video_placeholder = st.empty()
     video_placeholder.markdown(
-        f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="width: 100vw; height: 100vh; object-fit: contain;">',
+        f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="width: 100%; border-radius: 8px;">',
         unsafe_allow_html=True
     )
-else:
-    # --- NORMAL DASHBOARD MODE ---
-    # Layout for Video and Dashboard
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.subheader("Live Feed")
-        # Use native MJPEG stream via HTML <img> tag.
-        # The session ID completely isolates each user's video feed!
-        video_placeholder = st.empty()
-        video_placeholder.markdown(
-            f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" width="100%" style="border-radius:8px;">',
-            unsafe_allow_html=True
-        )
-        
-        st.subheader("Heatmap")
-        heatmap_placeholder = st.empty()
-
-    with col2:
         st.subheader("Analytics Dashboard")
         # Metric placeholders
         m_col1, m_col2, m_col_human = st.columns(3)
@@ -345,47 +355,46 @@ if st.session_state.processing and video_path is not None:
                 _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
                 push_video_frame(buffer.tobytes())
                 
-                if not video_only:
-                    # Update Heatmap only once every 3 seconds to save CPU and bandwidth
-                    if frame_count % (target_fps * 3) == 0:
-                        heatmap = visualizer.get_heatmap_overlay(frame_disp if 'frame_disp' in dir() else frame)
-                        _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
-                        heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
+                # Update Heatmap only once every 3 seconds to save CPU and bandwidth
+                if frame_count % (target_fps * 3) == 0:
+                    heatmap = visualizer.get_heatmap_overlay(frame_disp if 'frame_disp' in dir() else frame)
+                    _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
+                    heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
+                
+                # 3. Update Charts & Metrics at 1 FPS (Every 30 frames)
+                if frame_count % 30 == 0:
+                    stats = analytics.get_summary_stats()
                     
-                    # 3. Update Charts & Metrics at 1 FPS (Every 30 frames)
-                    if frame_count % 30 == 0:
-                        stats = analytics.get_summary_stats()
+                    # Update metrics
+                    m_total.metric("Total Chickens", stats["total_chickens"])
+                    m_active.metric("Active (Moving)", stats["active"])
+                    m_humans.metric("Humans Detected", len([t for t in detections if t.get("class_name") in ["person", "human", "worker"]]))
+                    m_score.metric("Flock Uniformity", f"{stats['uniformity_score']}/10")
+                    
+                    # Calculate dominant zone
+                    zone_counts = stats["zones"]
+                    if zone_counts:
+                        dom_zone = max(zone_counts, key=zone_counts.get)
+                        m_zone.metric("Dominant Zone", dom_zone.replace(" Zone", ""))
+                    
+                    m_alerts.metric("Active Alerts", len(analytics.alerts))
+                    m_uniformity.metric("Huddles Detected", stats["huddling_events"])
+                    
+                    # Update Charts
+                    if zone_counts:
+                        zone_df = pd.DataFrame(list(zone_counts.items()), columns=["Zone", "Count"])
+                        zone_chart_placeholder.bar_chart(zone_df.set_index("Zone"))
                         
-                        # Update metrics
-                        m_total.metric("Total Chickens", stats["total_chickens"])
-                        m_active.metric("Active (Moving)", stats["active"])
-                        m_humans.metric("Humans Detected", len([t for t in detections if t.get("class_name") in ["person", "human", "worker"]]))
-                        m_score.metric("Flock Uniformity", f"{stats['uniformity_score']}/10")
-                        
-                        # Calculate dominant zone
-                        zone_counts = stats["zones"]
-                        if zone_counts:
-                            dom_zone = max(zone_counts, key=zone_counts.get)
-                            m_zone.metric("Dominant Zone", dom_zone.replace(" Zone", ""))
-                        
-                        m_alerts.metric("Active Alerts", len(analytics.alerts))
-                        m_uniformity.metric("Huddles Detected", stats["huddling_events"])
-                        
-                        # Update Charts
-                        if zone_counts:
-                            zone_df = pd.DataFrame(list(zone_counts.items()), columns=["Zone", "Count"])
-                            zone_chart_placeholder.bar_chart(zone_df.set_index("Zone"))
-                            
-                        activity_df = pd.DataFrame([
-                            {"Status": "Active", "Count": stats["active"]},
-                            {"Status": "Resting", "Count": stats["inactive"]}
-                        ])
-                        activity_chart_placeholder.bar_chart(activity_df.set_index("Status"))
-                        
-                        # Update Alerts
-                        if analytics.alerts:
-                            alert_html = "".join([f"<p style='color:red;'>⚠️ {a}</p>" for a in analytics.alerts[-5:]])
-                            alert_box.markdown(alert_html, unsafe_allow_html=True)
+                    activity_df = pd.DataFrame([
+                        {"Status": "Active", "Count": stats["active"]},
+                        {"Status": "Resting", "Count": stats["inactive"]}
+                    ])
+                    activity_chart_placeholder.bar_chart(activity_df.set_index("Status"))
+                    
+                    # Update Alerts
+                    if analytics.alerts:
+                        alert_html = "".join([f"<p style='color:red;'>⚠️ {a}</p>" for a in analytics.alerts[-5:]])
+                        alert_box.markdown(alert_html, unsafe_allow_html=True)
 
             elapsed = time.time() - loop_start
             
@@ -393,27 +402,10 @@ if st.session_state.processing and video_path is not None:
                 time.sleep(frame_delay - elapsed)
                 
         st.sidebar.markdown("---")
-        if st.sidebar.button("Generate Final Report"):
-            st.session_state.processing = False
-            with st.spinner("Generating PDF Report..."):
-                report_gen = ReportGenerator()
-                report_path = report_gen.generate_report(st.session_state.analytics)
-                if report_path:
-                    st.sidebar.success("Report Ready!")
-                    with open(report_path, "rb") as f:
-                        st.sidebar.download_button(
-                            label="Download PDF Report",
-                            data=f,
-                            file_name="poultry_analytics_report.pdf",
-                            mime="application/pdf"
-                        )
-
-        # Add Embed Link generator to sidebar
-        st.sidebar.markdown("---")
         st.sidebar.subheader("🔗 Embed Links")
         st.sidebar.write("Copy this code to embed the live annotated video in your own website:")
-        embed_url = f"http://{os.environ.get('STREAM_HOST', '4.145.80.121')}:8501/?video=demo1&video_only=true&embed=true"
-        iframe_code = f'<iframe src="{embed_url}" width="800" height="450" frameborder="0" allowfullscreen></iframe>'
+        embed_url = f"http://{os.environ.get('STREAM_HOST', '4.145.80.121')}:8501/?mode=embed"
+        iframe_code = f'<iframe src="{embed_url}" width="100%" height="900" frameborder="0" allowfullscreen></iframe>'
         st.sidebar.code(iframe_code, language="html")
         
         cap.release()
