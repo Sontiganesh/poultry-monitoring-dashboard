@@ -179,11 +179,16 @@ if st.session_state.processing and video_path is not None:
             st.error("Failed to read video stream")
             st.session_state.processing = False
             
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps <= 0: fps = 30
+        frame_delay = 1.0 / fps
+        
         frame_skip = 5 # Run heavy AI models every 5th frame
         frame_count = 0
         last_detections = []
         
         while cap.isOpened() and st.session_state.processing:
+            loop_start = time.time()
             ret, frame = cap.read()
             if not ret:
                 break
@@ -310,6 +315,10 @@ if st.session_state.processing and video_path is not None:
                         formatted_alerts.append(a)
                 alert_text = "<br>".join(formatted_alerts)
                 alert_box.markdown(f"<div style='height: 150px; overflow-y: scroll; padding: 10px; border: 1px solid #444; border-radius: 5px; background-color: #1e1e1e;'>{alert_text}</div>", unsafe_allow_html=True)
+                
+            elapsed = time.time() - loop_start
+            if elapsed < frame_delay:
+                time.sleep(frame_delay - elapsed)
                 
         cap.release()
         
