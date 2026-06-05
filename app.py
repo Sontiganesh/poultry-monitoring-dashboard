@@ -44,15 +44,24 @@ query_params = st.query_params
 mode = query_params.get("mode")
 
 # --- EMBED MODE CONFIGURATION ---
-if mode == "embed":
+if mode in ["embed", "video_only"]:
     # Hide sidebar and header/footer for clean iframe embedding
-    st.markdown("""
+    css = """
         <style>
             [data-testid="stSidebar"] { display: none !important; }
             header { display: none !important; }
             footer { display: none !important; }
         </style>
-    """, unsafe_allow_html=True)
+    """
+    
+    if mode == "video_only":
+        css += """
+            <style>
+                .block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
+            </style>
+        """
+        
+    st.markdown(css, unsafe_allow_html=True)
     
     # Auto-play demo video
     if "auto_played" not in st.session_state:
@@ -72,11 +81,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 demo_video = query_params.get("video")
 demo_shed = query_params.get("shed")
 
-# Default to demo1 if embed mode is turned on without a specific video
-if mode == "embed" and not demo_video and not demo_shed:
-    demo_video = "demo1"
-
-if demo_video:
+# Determine video path
+if mode in ["embed", "video_only"]:
+    video_path = f"videos/{demo_video}.mp4" if demo_video else "videos/demo1.mp4"
+elif demo_video:
     is_embedded = True
     auto_video_path = os.path.join(BASE_DIR, "videos", f"{demo_video}.mp4")
 elif demo_shed:
@@ -177,50 +185,60 @@ def load_tracker(model_path, tracker_algo):
 if 'analytics' not in st.session_state:
     st.session_state.analytics = PoultryAnalytics()
     
-# Layout for Video and Dashboard
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    tab1, tab2 = st.tabs(["🔴 Live Feed", "🔥 Heatmap"])
+if mode == "video_only":
+    # --- PURE VIDEO EMBED ---
+    SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
+    video_placeholder = st.empty()
+    video_placeholder.markdown(
+        f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="width: 100vw; height: 100vh; object-fit: contain;">',
+        unsafe_allow_html=True
+    )
+else:
+    # --- NORMAL / FULL DASHBOARD EMBED ---
+    # Layout for Video and Dashboard
+    col1, col2 = st.columns([2, 1])
     
-    with tab1:
-        # Use native MJPEG stream via HTML <img> tag.
-        # The session ID completely isolates each user's video feed!
-        SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
+    with col1:
+        tab1, tab2 = st.tabs(["🔴 Live Feed", "🔥 Heatmap"])
         
-        video_placeholder = st.empty()
-        video_placeholder.markdown(
-            f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="width: 100%; border-radius: 8px;">',
-            unsafe_allow_html=True
-        )
+        with tab1:
+            # Use native MJPEG stream via HTML <img> tag.
+            # The session ID completely isolates each user's video feed!
+            SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
+            
+            video_placeholder = st.empty()
+            video_placeholder.markdown(
+                f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="width: 100%; border-radius: 8px;">',
+                unsafe_allow_html=True
+            )
+            
+        with tab2:
+            heatmap_placeholder = st.empty()
         
-    with tab2:
-        heatmap_placeholder = st.empty()
-    
-with col2:
-    st.subheader("Analytics Dashboard")
-    # Metric placeholders
-    m_col1, m_col2, m_col_human = st.columns(3)
-    m_total = m_col1.empty()
-    m_active = m_col2.empty()
-    m_humans = m_col_human.empty()
-    
-    m_col3, m_col4 = st.columns(2)
-    m_score = m_col3.empty()
-    m_zone = m_col4.empty()
-    
-    m_col5, m_col6 = st.columns(2)
-    m_alerts = m_col5.empty()
-    m_uniformity = m_col6.empty()
-    
-    st.subheader("Live Analytics Charts")
-    zone_chart_placeholder = st.empty()
-    activity_chart_placeholder = st.empty()
-    
-    st.subheader("Recent Alerts")
-    alert_box = st.empty()
-    
-    report_placeholder = st.empty()
+    with col2:
+        st.subheader("Analytics Dashboard")
+        # Metric placeholders
+        m_col1, m_col2, m_col_human = st.columns(3)
+        m_total = m_col1.empty()
+        m_active = m_col2.empty()
+        m_humans = m_col_human.empty()
+        
+        m_col3, m_col4 = st.columns(2)
+        m_score = m_col3.empty()
+        m_zone = m_col4.empty()
+        
+        m_col5, m_col6 = st.columns(2)
+        m_alerts = m_col5.empty()
+        m_uniformity = m_col6.empty()
+        
+        st.subheader("Live Analytics Charts")
+        zone_chart_placeholder = st.empty()
+        activity_chart_placeholder = st.empty()
+        
+        st.subheader("Recent Alerts")
+        alert_box = st.empty()
+        
+        report_placeholder = st.empty()
 
 if st.session_state.processing and video_path is not None:
     tracker = load_tracker(selected_model_path, selected_tracker)
@@ -356,46 +374,47 @@ if st.session_state.processing and video_path is not None:
                 _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
                 push_video_frame(buffer.tobytes())
                 
-                # Update Heatmap only once every 3 seconds to save CPU and bandwidth
-                if frame_count % (target_fps * 3) == 0:
-                    heatmap = visualizer.get_heatmap_overlay(frame_disp if 'frame_disp' in dir() else frame)
-                    _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
-                    heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
-                
-                # 3. Update Charts & Metrics at 1 FPS (Every 30 frames)
-                if frame_count % 30 == 0:
-                    stats = analytics.get_summary_stats()
+                if mode != "video_only":
+                    # Update Heatmap only once every 3 seconds to save CPU and bandwidth
+                    if frame_count % (target_fps * 3) == 0:
+                        heatmap = visualizer.get_heatmap_overlay(frame_disp if 'frame_disp' in dir() else frame)
+                        _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
+                        heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
                     
-                    # Update metrics
-                    m_total.metric("Total Chickens", stats["total_chickens"])
-                    m_active.metric("Active (Moving)", stats["active"])
-                    m_humans.metric("Humans Detected", len([t for t in detections if t.get("class_name") in ["person", "human", "worker"]]))
-                    m_score.metric("Avg Activity Score", f"{stats['avg_activity_score']}%")
-                    
-                    m_zone.metric("Most Visited Zone", stats["most_visited_zone"].replace(" Zone", ""))
-                    m_alerts.metric("Active Alerts", stats["alert_count"])
-                    m_uniformity.metric("Size Uniformity", stats["size_uniformity"])
-                    
-                    # Update Charts
-                    if stats["timeline"]["timestamps"]:
-                        # Zone utilization chart
-                        zone_df = pd.DataFrame({
-                            "Feed": stats["timeline"]["feed_zone"],
-                            "Water": stats["timeline"]["water_zone"],
-                            "Rest": stats["timeline"]["rest_zone"]
-                        }, index=stats["timeline"]["timestamps"])
-                        zone_chart_placeholder.line_chart(zone_df)
+                    # 3. Update Charts & Metrics at 1 FPS (Every 30 frames)
+                    if frame_count % 30 == 0:
+                        stats = analytics.get_summary_stats()
                         
-                        # Activity trend chart
-                        act_df = pd.DataFrame({
-                            "Avg Activity": stats["timeline"]["avg_activity"]
-                        }, index=stats["timeline"]["timestamps"])
-                        activity_chart_placeholder.line_chart(act_df)
-                    
-                    # Update Alerts
-                    if analytics.alerts:
-                        alert_html = "".join([f"<p style='color:red;'>⚠️ {a}</p>" for a in analytics.alerts[-5:]])
-                        alert_box.markdown(alert_html, unsafe_allow_html=True)
+                        # Update metrics
+                        m_total.metric("Total Chickens", stats["total_chickens"])
+                        m_active.metric("Active (Moving)", stats["active"])
+                        m_humans.metric("Humans Detected", len([t for t in detections if t.get("class_name") in ["person", "human", "worker"]]))
+                        m_score.metric("Avg Activity Score", f"{stats['avg_activity_score']}%")
+                        
+                        m_zone.metric("Most Visited Zone", stats["most_visited_zone"].replace(" Zone", ""))
+                        m_alerts.metric("Active Alerts", stats["alert_count"])
+                        m_uniformity.metric("Size Uniformity", stats["size_uniformity"])
+                        
+                        # Update Charts
+                        if stats["timeline"]["timestamps"]:
+                            # Zone utilization chart
+                            zone_df = pd.DataFrame({
+                                "Feed": stats["timeline"]["feed_zone"],
+                                "Water": stats["timeline"]["water_zone"],
+                                "Rest": stats["timeline"]["rest_zone"]
+                            }, index=stats["timeline"]["timestamps"])
+                            zone_chart_placeholder.line_chart(zone_df)
+                            
+                            # Activity trend chart
+                            act_df = pd.DataFrame({
+                                "Avg Activity": stats["timeline"]["avg_activity"]
+                            }, index=stats["timeline"]["timestamps"])
+                            activity_chart_placeholder.line_chart(act_df)
+                        
+                        # Update Alerts
+                        if analytics.alerts:
+                            alert_html = "".join([f"<p style='color:red;'>⚠️ {a}</p>" for a in analytics.alerts[-5:]])
+                            alert_box.markdown(alert_html, unsafe_allow_html=True)
 
             elapsed = time.time() - loop_start
             
