@@ -40,7 +40,7 @@ model_size = st.sidebar.selectbox("Model Size", [
     "Medium (yolov8m.pt - Best/Slow)",
     "World Small (yolov8s-world.pt - Zero-Shot)",
     "World Medium (yolov8m-worldv2.pt - Zero-Shot)"
-])
+], index=3) # Default to World Small to prevent user error
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.10, 0.05)
 
 target_classes = None
