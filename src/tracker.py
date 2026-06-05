@@ -33,7 +33,7 @@ class PoultryTracker:
         # Initialize YOLOv8 model
         if 'world' in model_path.lower():
             self.model = YOLOWorld(model_path)
-            self.model.set_classes(["person", "chicken", "feeding pot", "water pot"])
+            self.model.set_classes(["person", "bird", "feeding pot", "water pot"])
         else:
             self.model = YOLO(model_path)
 
