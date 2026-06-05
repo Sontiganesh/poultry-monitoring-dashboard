@@ -376,27 +376,27 @@ if st.session_state.processing and video_path is not None:
                     m_total.metric("Total Chickens", stats["total_chickens"])
                     m_active.metric("Active (Moving)", stats["active"])
                     m_humans.metric("Humans Detected", len([t for t in detections if t.get("class_name") in ["person", "human", "worker"]]))
-                    m_score.metric("Flock Uniformity", f"{stats['uniformity_score']}/10")
+                    m_score.metric("Avg Activity Score", f"{stats['avg_activity_score']}%")
                     
-                    # Calculate dominant zone
-                    zone_counts = stats["zones"]
-                    if zone_counts:
-                        dom_zone = max(zone_counts, key=zone_counts.get)
-                        m_zone.metric("Dominant Zone", dom_zone.replace(" Zone", ""))
-                    
-                    m_alerts.metric("Active Alerts", len(analytics.alerts))
-                    m_uniformity.metric("Huddles Detected", stats["huddling_events"])
+                    m_zone.metric("Most Visited Zone", stats["most_visited_zone"].replace(" Zone", ""))
+                    m_alerts.metric("Active Alerts", stats["alert_count"])
+                    m_uniformity.metric("Size Uniformity", stats["size_uniformity"])
                     
                     # Update Charts
-                    if zone_counts:
-                        zone_df = pd.DataFrame(list(zone_counts.items()), columns=["Zone", "Count"])
-                        zone_chart_placeholder.bar_chart(zone_df.set_index("Zone"))
+                    if stats["timeline"]["timestamps"]:
+                        # Zone utilization chart
+                        zone_df = pd.DataFrame({
+                            "Feed": stats["timeline"]["feed_zone"],
+                            "Water": stats["timeline"]["water_zone"],
+                            "Rest": stats["timeline"]["rest_zone"]
+                        }, index=stats["timeline"]["timestamps"])
+                        zone_chart_placeholder.line_chart(zone_df)
                         
-                    activity_df = pd.DataFrame([
-                        {"Status": "Active", "Count": stats["active"]},
-                        {"Status": "Resting", "Count": stats["inactive"]}
-                    ])
-                    activity_chart_placeholder.bar_chart(activity_df.set_index("Status"))
+                        # Activity trend chart
+                        act_df = pd.DataFrame({
+                            "Avg Activity": stats["timeline"]["avg_activity"]
+                        }, index=stats["timeline"]["timestamps"])
+                        activity_chart_placeholder.line_chart(act_df)
                     
                     # Update Alerts
                     if analytics.alerts:
