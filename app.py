@@ -41,7 +41,7 @@ model_size = st.sidebar.selectbox("Model Size", [
 ])
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.10, 0.05)
 
-target_classes = [0, 14] # 0 = person, 14 = bird
+target_classes = None # Do NOT filter classes, so misclassified chickens aren't dropped!
 
 tracker_algo_ui = st.sidebar.selectbox("Tracking Algorithm", ["ByteTrack (Faster)", "BoTSORT (More Accurate)"])
 selected_tracker = "botsort" if "BoTSORT" in tracker_algo_ui else "bytetrack"
