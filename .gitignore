@@ -1,0 +1,12 @@
+*.pt
+__pycache__/
+*.mp4
+*.avi
+*.log
+.env
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/

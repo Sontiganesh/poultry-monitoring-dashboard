@@ -1,0 +1,60 @@
+import cv2
+from ultralytics import YOLO
+from ultralytics.utils import ROOT
+import yaml
+import os
+
+class PoultryTracker:
+    def __init__(self, model_path='yolov8n.pt', tracker_algo='bytetrack'):
+        # Dynamically generate custom tracker config
+        if tracker_algo == 'botsort':
+            default_yaml_path = ROOT / 'cfg' / 'trackers' / 'botsort.yaml'
+            custom_yaml_path = 'custom_botsort.yaml'
+        else:
+            default_yaml_path = ROOT / 'cfg' / 'trackers' / 'bytetrack.yaml'
+            custom_yaml_path = 'custom_bytetrack.yaml'
+        
+        try:
+            with open(default_yaml_path, 'r') as f:
+                config = yaml.safe_load(f)
+                
+            config['track_high_thresh'] = 0.10
+            config['track_low_thresh'] = 0.05
+            config['new_track_thresh'] = 0.10
+            
+            with open(custom_yaml_path, 'w') as f:
+                yaml.dump(config, f)
+            self.tracker_type = custom_yaml_path
+        except Exception as e:
+            print(f"Failed to generate custom tracker config, falling back to default: {e}")
+            self.tracker_type = f"{tracker_algo}.yaml"
+
+        # Initialize YOLOv8 model. 'yolov8n.pt' will be downloaded automatically if not present.
+        self.model = YOLO(model_path)
+
+        
+    def process_frame(self, frame, conf_threshold=0.15, classes=None):
+        # Run tracking on the frame
+        # For demo purposes, we can optionally filter by classes (e.g. 14 for bird)
+        # and adjust the confidence threshold.
+        results = self.model.track(frame, persist=True, classes=classes, conf=conf_threshold, tracker=self.tracker_type, verbose=False)
+        
+        detections = []
+        if len(results) > 0 and results[0].boxes is not None:
+            boxes = results[0].boxes
+            for box in boxes:
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                conf = float(box.conf[0])
+                
+                # Ensure it has an ID
+                track_id = int(box.id[0]) if box.id is not None else None
+                
+                if track_id is not None:
+                    detections.append({
+                        "track_id": track_id,
+                        "box": (x1, y1, x2, y2),
+                        "conf": conf,
+                        "center": ((x1 + x2) // 2, (y1 + y2) // 2)
+                    })
+                    
+        return detections
