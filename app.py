@@ -285,23 +285,18 @@ if st.session_state.processing and video_path is not None:
                 # Use cached detections to keep the video looking smooth without running YOLO
                 detections = last_detections
                 
-            # Visualization runs on EVERY frame!
-            frame_disp = visualizer.draw_zones(frame, zone_manager)
-            frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
+            # Only draw expensive overlays every 2nd frame to cut CPU drawing cost in half
+            if frame_count % 2 == 0:
+                frame_disp = visualizer.draw_zones(frame, zone_manager)
+                frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
+                
+                # Encode using fast OpenCV C++ JPEG encoder
+                _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 30])
+                video_placeholder.image(buffer.tobytes(), use_container_width=True)
             
-            # Show heatmap optionally
-            heatmap = visualizer.get_heatmap_overlay(frame_disp)
-            # --- SUPER FAST WEBSOCKET ENCODING HACK ---
-            # Streamlit natively uses the slow Python 'Pillow' library to encode numpy arrays into JPEGs.
-            # Doing this 24 times a second maxes out the CPU. By using OpenCV's highly optimized C++ 
-            # engine, we compress the frame to a tiny JPEG byte string in <3 milliseconds!
-            
-            # 1. Update Video Feed EVERY frame for buttery smooth 24 FPS playback
-            _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 30])
-            video_placeholder.image(buffer.tobytes(), use_container_width=True)
-            
-            # 2. Update Heatmap occasionally to save massive WebSocket bandwidth
-            if frame_count % 24 == 0:
+            # Update Heatmap only once every 3 seconds to save massive CPU and bandwidth
+            if frame_count % (target_fps * 3) == 0:
+                heatmap = visualizer.get_heatmap_overlay(frame if 'frame_disp' not in dir() else frame_disp)
                 _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 30])
                 heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
             
