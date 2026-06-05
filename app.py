@@ -171,19 +171,23 @@ if st.session_state.processing and video_path is not None:
         # Get frame size for zones
         ret, frame = cap.read()
         if ret:
+            # Resize frame to 480p to drastically reduce CPU rendering/encoding bottleneck
+            frame = cv2.resize(frame, (854, 480))
             h, w = frame.shape[:2]
             zone_manager = ZoneManager(w, h)
         else:
             st.error("Failed to read video stream")
             st.session_state.processing = False
             
-        frame_skip = 1 # Process every frame for smooth tracking
+        frame_skip = 5 # Skip 5 frames to give a 5x CPU speedup
         frame_count = 0
         
         while cap.isOpened() and st.session_state.processing:
             ret, frame = cap.read()
             if not ret:
                 break
+                
+            frame = cv2.resize(frame, (854, 480))
                 
             frame_count += 1
             if frame_count % frame_skip != 0:
@@ -208,8 +212,8 @@ if st.session_state.processing and video_path is not None:
                 is_pot = False
                 for pot in zone_manager.pots["feed"] + zone_manager.pots["water"]:
                     px, py = pot["center"]
-                    # If detection center is within 40 pixels of a pot center, it is the pot itself
-                    if ((cx - px)**2 + (cy - py)**2)**0.5 < 40:
+                    # If detection center is within 20 pixels of a pot center (scaled down for 480p frame), it is the pot itself
+                    if ((cx - px)**2 + (cy - py)**2)**0.5 < 20:
                         is_pot = True
                         break
                 if not is_pot:
