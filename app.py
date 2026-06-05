@@ -4,7 +4,13 @@ import tempfile
 import os
 import time
 import numpy as np
+import torch
+import warnings
 import pandas as pd
+
+# Restrict PyTorch to a single thread to prevent it from aggressively consuming 
+# all vCPUs (100%+) during OpenMP matrix multiplications.
+torch.set_num_threads(1)
 
 from src.tracker import PoultryTracker
 from src.analytics import PoultryAnalytics
@@ -69,7 +75,8 @@ conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.10, 0.05
 target_classes = None # Do NOT filter classes, so misclassified chickens aren't dropped!
 
 tracker_algo_ui = st.sidebar.selectbox("Tracking Algorithm", ["ByteTrack (Faster)", "BoTSORT (More Accurate)"])
-selected_tracker = "botsort" if "BoTSORT" in tracker_algo_ui else "bytetrack"
+# Force ByteTrack on CPU. BoTSORT uses deep learning ReID which maxes out the CPU on weak VMs.
+selected_tracker = "bytetrack"
 
 model_path_map = {
     "Nano (yolov8n.pt - Fast)": "yolov8n.pt",
@@ -340,8 +347,11 @@ if st.session_state.processing and video_path is not None:
                 alert_box.markdown(f"<div style='height: 150px; overflow-y: scroll; padding: 10px; border: 1px solid #444; border-radius: 5px; background-color: #1e1e1e;'>{alert_text}</div>", unsafe_allow_html=True)
                 
             elapsed = time.time() - loop_start
-            if elapsed < frame_delay:
-                time.sleep(frame_delay - elapsed)
+            
+            # Guarantee AT LEAST 50ms of sleep every single loop to forcefully drop CPU utilization.
+            # If we don't do this, Streamlit will just run infinitely fast and pin the CPU at 100%
+            sleep_time = max(0.05, frame_delay - elapsed)
+            time.sleep(sleep_time)
                 
         cap.release()
         
