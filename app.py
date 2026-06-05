@@ -189,16 +189,14 @@ if st.session_state.processing and video_path is not None:
         fps = cap.get(cv2.CAP_PROP_FPS)
         if fps <= 0: fps = 30
         
-        # --- THE ULTIMATE CPU FIX ---
-        # Instead of trying to push 30 FPS through Streamlit (which burns 130% CPU),
-        # we hard-lock the app to 10 FPS. Security dashboards usually run at 5-10 FPS anyway.
-        target_fps = 10
+        # Target 24 FPS for smooth movie-like video playback
+        target_fps = 24
         frame_delay = 1.0 / target_fps
         
         # Calculate how many frames to skip reading so the video still plays at normal speed
         video_frame_jump = max(1, int(fps / target_fps))
         
-        frame_skip = 5 # Run heavy AI models every 5th processed frame (i.e., 2 times a second)
+        frame_skip = 6 # Run heavy AI models every 6th processed frame (i.e., 4 times a second)
         frame_count = 0
         last_detections = []
         
