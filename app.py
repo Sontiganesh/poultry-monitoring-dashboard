@@ -161,14 +161,19 @@ if st.session_state.processing and video_path is not None:
             # Process Frame
             raw_detections = tracker.process_frame(frame, conf_threshold=conf_threshold, classes=target_classes)
             
-            # Filter out inanimate objects (pots) detected by standard YOLO
-            ignored_classes = [
-                "bottle", "wine glass", "cup", "bowl", "potted plant", "vase", 
-                "umbrella", "traffic light", "fire hydrant", "stop sign", "chair", 
-                "toilet", "clock", "backpack", "handbag", "sports ball", "apple", 
-                "orange", "mouse", "remote", "cell phone", "book", "sink", "tv"
-            ]
-            detections = [d for d in raw_detections if d.get("class_name", "") not in ignored_classes]
+            # Filter out standard YOLO detections that perfectly overlap with known pots
+            detections = []
+            for d in raw_detections:
+                cx, cy = d["center"]
+                is_pot = False
+                for pot in zone_manager.pots["feed"] + zone_manager.pots["water"]:
+                    px, py = pot["center"]
+                    # If detection center is within 40 pixels of a pot center, it is the pot itself
+                    if ((cx - px)**2 + (cy - py)**2)**0.5 < 40:
+                        is_pot = True
+                        break
+                if not is_pot:
+                    detections.append(d)
             
             # Update dynamic zones using World Model every 90 frames
             if frame_count % 90 == 1 or (not zone_manager.pots["feed"] and not zone_manager.pots["water"]):
