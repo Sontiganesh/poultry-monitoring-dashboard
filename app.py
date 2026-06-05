@@ -16,16 +16,23 @@ from src.tracker import PoultryTracker
 from src.analytics import PoultryAnalytics
 from src.zones import ZoneManager
 from src.visualization import Visualizer
-from src.reporting import ReportGenerator
+import uuid
 
-# MJPEG frames are shared via this file with the standalone Flask stream service (port 8502)
-FRAME_PATH = "/tmp/poultry_latest_frame.jpg"
+# Create a unique session ID for this browser tab so multiple users don't overwrite each other's frames!
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+SESSION_ID = st.session_state.session_id
 
 def push_video_frame(jpeg_bytes: bytes):
-    """Write the latest frame to the shared file for the Flask stream server to pick up."""
+    """Write the latest frame to the shared file atomically to prevent stream flickering."""
+    frame_path = f"/tmp/poultry_frame_{SESSION_ID}.jpg"
+    temp_path = frame_path + ".tmp"
     try:
-        with open(FRAME_PATH, "wb") as f:
+        # Write to a temp file first, then atomically rename it.
+        # This completely cures image tearing/flickering!
+        with open(temp_path, "wb") as f:
             f.write(jpeg_bytes)
+        os.rename(temp_path, frame_path)
     except Exception:
         pass
 
@@ -145,13 +152,12 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     st.subheader("Live Feed")
-    # Use native MJPEG stream via HTML <img> tag instead of st.image().
-    # This bypasses Streamlit's entire WebSocket→React pipeline for video.
-    # The browser renders MJPEG natively at the OS level — zero JS overhead.
+    # Use native MJPEG stream via HTML <img> tag.
+    # The session ID completely isolates each user's video feed!
     SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
     video_placeholder = st.empty()
     video_placeholder.markdown(
-        f'<img src="http://{SERVER_IP}:8502/video_feed" width="100%" style="border-radius:8px;">',
+        f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" width="100%" style="border-radius:8px;">',
         unsafe_allow_html=True
     )
     

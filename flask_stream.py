@@ -11,15 +11,12 @@ import sys
 
 app = Flask(__name__)
 
-# Path to the shared frame file (app.py writes JPEGs here, Flask reads them)
-FRAME_PATH = "/tmp/poultry_latest_frame.jpg"
-
-def _generate():
+def _generate(frame_path):
     """MJPEG generator that reads the latest frame from disk."""
     while True:
         try:
-            if os.path.exists(FRAME_PATH):
-                with open(FRAME_PATH, "rb") as f:
+            if os.path.exists(frame_path):
+                with open(frame_path, "rb") as f:
                     frame = f.read()
                 if frame:
                     yield (
@@ -31,10 +28,14 @@ def _generate():
             pass
         time.sleep(0.066)  # ~15 FPS
 
-@app.route("/video_feed")
-def video_feed():
+@app.route("/video_feed/<session_id>")
+def video_feed(session_id):
+    # Prevent path traversal attacks
+    safe_session = "".join(c for c in session_id if c.isalnum() or c == '-')
+    frame_path = f"/tmp/poultry_frame_{safe_session}.jpg"
+    
     return Response(
-        _generate(),
+        _generate(frame_path),
         mimetype="multipart/x-mixed-replace; boundary=frame"
     )
 
