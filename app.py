@@ -37,13 +37,11 @@ st.sidebar.header("Detection Settings")
 model_size = st.sidebar.selectbox("Model Size", [
     "Nano (yolov8n.pt - Fast)", 
     "Small (yolov8s.pt - Better)", 
-    "Medium (yolov8m.pt - Best/Slow)",
-    "World Small (yolov8s-world.pt - Zero-Shot)",
-    "World Medium (yolov8m-worldv2.pt - Zero-Shot)"
-], index=3) # Default to World Small to prevent user error
+    "Medium (yolov8m.pt - Best/Slow)"
+])
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.10, 0.05)
 
-target_classes = None
+target_classes = [0, 14] # 0 = person, 14 = bird
 
 tracker_algo_ui = st.sidebar.selectbox("Tracking Algorithm", ["ByteTrack (Faster)", "BoTSORT (More Accurate)"])
 selected_tracker = "botsort" if "BoTSORT" in tracker_algo_ui else "bytetrack"
@@ -51,9 +49,7 @@ selected_tracker = "botsort" if "BoTSORT" in tracker_algo_ui else "bytetrack"
 model_path_map = {
     "Nano (yolov8n.pt - Fast)": "yolov8n.pt",
     "Small (yolov8s.pt - Better)": "yolov8s.pt",
-    "Medium (yolov8m.pt - Best/Slow)": "yolov8m.pt",
-    "World Small (yolov8s-world.pt - Zero-Shot)": "yolov8s-world.pt",
-    "World Medium (yolov8m-worldv2.pt - Zero-Shot)": "yolov8m-worldv2.pt"
+    "Medium (yolov8m.pt - Best/Slow)": "yolov8m.pt"
 }
 selected_model_path = model_path_map[model_size]
 
@@ -80,6 +76,14 @@ if stop_button:
     st.session_state.processing = False
 
 # --- Initialize Modules ---
+from ultralytics import YOLOWorld
+
+@st.cache_resource
+def load_zone_detector():
+    model = YOLOWorld("yolov8s-world.pt")
+    model.set_classes(["feeding pot", "water pot"])
+    return model
+
 @st.cache_resource
 def load_tracker(model_path, tracker_algo):
     return PoultryTracker(model_path, tracker_algo)
@@ -124,6 +128,7 @@ with col2:
 
 if st.session_state.processing and video_path is not None:
     tracker = load_tracker(selected_model_path, selected_tracker)
+    zone_detector = load_zone_detector()
     visualizer = Visualizer()
     analytics = st.session_state.analytics
     
@@ -156,8 +161,21 @@ if st.session_state.processing and video_path is not None:
             # Process Frame
             detections = tracker.process_frame(frame, conf_threshold=conf_threshold, classes=target_classes)
             
-            # Update dynamic zones based on detected pots
-            zone_manager.update_pots(detections)
+            # Update dynamic zones using World Model every 90 frames
+            if frame_count % 90 == 1 or (not zone_manager.pots["feed"] and not zone_manager.pots["water"]):
+                world_results = zone_detector(frame, verbose=False)
+                world_dets = []
+                for box in world_results[0].boxes:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    conf = float(box.conf[0])
+                    cls_id = int(box.cls[0])
+                    cls_name = zone_detector.names[cls_id]
+                    if conf > 0.05:
+                        world_dets.append({
+                            "class_name": cls_name,
+                            "center": ((x1+x2)//2, (y1+y2)//2)
+                        })
+                zone_manager.update_pots(world_dets)
             
             # Update analytics
             for det in detections:
