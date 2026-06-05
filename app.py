@@ -179,8 +179,9 @@ if st.session_state.processing and video_path is not None:
             st.error("Failed to read video stream")
             st.session_state.processing = False
             
-        frame_skip = 5 # Skip 5 frames to give a 5x CPU speedup
+        frame_skip = 5 # Run heavy AI models every 5th frame
         frame_count = 0
+        last_detections = []
         
         while cap.isOpened() and st.session_state.processing:
             ret, frame = cap.read()
@@ -190,67 +191,70 @@ if st.session_state.processing and video_path is not None:
             frame = cv2.resize(frame, (854, 480))
                 
             frame_count += 1
-            if frame_count % frame_skip != 0:
-                continue
+            
+            if frame_count % frame_skip == 0 or frame_count == 1:
+                # Process Heavy AI Models
+                raw_detections = tracker.process_frame(frame, conf_threshold=conf_threshold, classes=target_classes)
                 
-            # Process Frame
-            raw_detections = tracker.process_frame(frame, conf_threshold=conf_threshold, classes=target_classes)
-            
-            # Filter out standard YOLO detections that perfectly overlap with known pots
-            detections = []
-            
-            # Filter out obvious inanimate objects that YOLO misclassifies the red pots as.
-            # We explicitly DO NOT ignore "sports ball", "backpack", or "umbrella" because 
-            # standard YOLO often misclassifies curled-up white chickens as those!
-            ignored_classes = ["bowl", "cup", "vase", "potted plant", "fire hydrant", "bottle", "wine glass", "traffic light", "chair"]
-            
-            for d in raw_detections:
-                if d.get("class_name", "") in ignored_classes:
-                    continue
+                # Filter out standard YOLO detections that perfectly overlap with known pots
+                detections = []
+                
+                # Filter out obvious inanimate objects that YOLO misclassifies the red pots as.
+                ignored_classes = ["bowl", "cup", "vase", "potted plant", "fire hydrant", "bottle", "wine glass", "traffic light", "chair"]
+                
+                for d in raw_detections:
+                    if d.get("class_name", "") in ignored_classes:
+                        continue
+                        
+                    cx, cy = d["center"]
+                    is_pot = False
+                    for pot in zone_manager.pots["feed"] + zone_manager.pots["water"]:
+                        px, py = pot["center"]
+                        # If detection center is within 20 pixels of a pot center, it is the pot itself
+                        if ((cx - px)**2 + (cy - py)**2)**0.5 < 20:
+                            is_pot = True
+                            break
+                    if not is_pot:
+                        detections.append(d)
+                
+                # Update dynamic zones using World Model
+                if frame_count % 90 == 0 or (not zone_manager.pots["feed"] and not zone_manager.pots["water"]):
+                    world_results = zone_detector(frame, verbose=False)
+                    world_dets = []
+                    for box in world_results[0].boxes:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        conf = float(box.conf[0])
+                        cls_id = int(box.cls[0])
+                        cls_name = zone_detector.names[cls_id]
+                        if conf > 0.05:
+                            world_dets.append({
+                                "class_name": cls_name,
+                                "center": ((x1+x2)//2, (y1+y2)//2),
+                                "box": (x1, y1, x2, y2)
+                            })
+                    zone_manager.update_pots(world_dets)
+                
+                # Update analytics with new tracking
+                for det in detections:
+                    track_id = det["track_id"]
+                    cx, cy = det["center"]
+                    x1, y1, x2, y2 = det["box"]
+                    box_area = (x2 - x1) * (y2 - y1)
+                    class_id = det.get("class_id", 14)
+                    class_name = det.get("class_name", "bird")
+                    zone = zone_manager.get_zone(cx, cy)
+                    analytics.update(track_id, cx, cy, zone, class_id=class_id, class_name=class_name, box_area=box_area)
                     
-                cx, cy = d["center"]
-                is_pot = False
-                for pot in zone_manager.pots["feed"] + zone_manager.pots["water"]:
-                    px, py = pot["center"]
-                    # If detection center is within 20 pixels of a pot center (scaled down for 480p frame), it is the pot itself
-                    if ((cx - px)**2 + (cy - py)**2)**0.5 < 20:
-                        is_pot = True
-                        break
-                if not is_pot:
-                    detections.append(d)
-            
-            # Update dynamic zones using World Model every 90 frames
-            if frame_count % 90 == 1 or (not zone_manager.pots["feed"] and not zone_manager.pots["water"]):
-                world_results = zone_detector(frame, verbose=False)
-                world_dets = []
-                for box in world_results[0].boxes:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    conf = float(box.conf[0])
-                    cls_id = int(box.cls[0])
-                    cls_name = zone_detector.names[cls_id]
-                    if conf > 0.05:
-                        world_dets.append({
-                            "class_name": cls_name,
-                            "center": ((x1+x2)//2, (y1+y2)//2),
-                            "box": (x1, y1, x2, y2)
-                        })
-                zone_manager.update_pots(world_dets)
-            
-            # Update analytics
-            for det in detections:
-                track_id = det["track_id"]
-                cx, cy = det["center"]
-                x1, y1, x2, y2 = det["box"]
-                box_area = (x2 - x1) * (y2 - y1)
-                class_id = det.get("class_id", 14)
-                class_name = det.get("class_name", "bird")
-                zone = zone_manager.get_zone(cx, cy)
-                analytics.update(track_id, cx, cy, zone, class_id=class_id, class_name=class_name, box_area=box_area)
+                # Run flock-level analytics (huddling)
+                analytics.analyze_flock()
                 
-            # Run flock-level analytics (huddling)
-            analytics.analyze_flock()
-            
-            # Visualization
+                # Cache detections for the next skipped frames
+                last_detections = detections
+            else:
+                # Use cached detections to keep the video looking smooth without running YOLO
+                detections = last_detections
+                
+            # Visualization runs on EVERY frame!
             frame_disp = visualizer.draw_zones(frame, zone_manager)
             frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
             
