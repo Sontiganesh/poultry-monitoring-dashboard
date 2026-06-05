@@ -186,25 +186,29 @@ class PoultryAnalytics:
         stats["activity_score"] = min(100, max(0, score))
         
     def get_summary_stats(self):
-        total_chickens = sum(1 for s in self.stats.values() if s.get("class_id", 14) == 14)
-        total_humans = sum(1 for s in self.stats.values() if s.get("class_id", 14) == 0)
+        current_time = time.time()
+        active_track_ids = [tid for tid, h in self.history.items() if h and (current_time - h[-1]["timestamp"] < 2.0)]
         
-        active = sum(1 for s in self.stats.values() if not s["is_inactive"] and s.get("class_id", 14) == 14)
+        total_chickens = sum(1 for tid in active_track_ids if self.stats[tid].get("class_id", 14) != 0)
+        total_humans = sum(1 for tid in active_track_ids if self.stats[tid].get("class_id", 14) == 0)
+        
+        active = sum(1 for tid in active_track_ids if not self.stats[tid]["is_inactive"] and self.stats[tid].get("class_id", 14) != 0)
         inactive = total_chickens - active
         
-        chicken_scores = [s["activity_score"] for s in self.stats.values() if s.get("class_id", 14) == 14]
+        chicken_scores = [self.stats[tid]["activity_score"] for tid in active_track_ids if self.stats[tid].get("class_id", 14) != 0]
         avg_score = int(np.mean(chicken_scores)) if chicken_scores else 0
         
         # most visited zone (chickens only)
         zone_counts = {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0}
-        for s in self.stats.values():
-            if s.get("class_id", 14) == 14:
+        for tid in active_track_ids:
+            s = self.stats[tid]
+            if s.get("class_id", 14) != 0:
                 for z, count in s["zone_visits"].items():
                     zone_counts[z] += count
         most_visited = max(zone_counts, key=zone_counts.get) if total_chickens > 0 and sum(zone_counts.values()) > 0 else "None"
         
         # Size Uniformity (chickens only)
-        areas = [s.get("avg_box_area", 0) for s in self.stats.values() if s.get("avg_box_area", 0) > 0 and s.get("class_id", 14) == 14]
+        areas = [self.stats[tid].get("avg_box_area", 0) for tid in active_track_ids if self.stats[tid].get("avg_box_area", 0) > 0 and self.stats[tid].get("class_id", 14) != 0]
         uniformity = "N/A"
         if len(areas) > 1:
             mean_area = np.mean(areas)
