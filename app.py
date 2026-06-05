@@ -60,7 +60,8 @@ if mode == "embed":
 
 # --- SIDEBAR & UPLOAD CONTROLS ---
 # We still run this code, but it's hidden by CSS if mode=embed
-st.sidebar.image("assets/logo.png", use_container_width=True)
+if os.path.exists("assets/logo.png"):
+    st.sidebar.image("assets/logo.png", use_container_width=True)
 st.sidebar.title("Configuration")
 is_embedded = False
 auto_video_path = None
