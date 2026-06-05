@@ -14,20 +14,24 @@ class ZoneManager:
             cname = det.get("class_name", "")
             if "pot" in cname:
                 cx, cy = det["center"]
+                box = det.get("box", None)
+                pot_data = {"center": (cx, cy), "box": box}
                 if "water" in cname:
-                    self.pots["water"].append((cx, cy))
+                    self.pots["water"].append(pot_data)
                 else:
-                    self.pots["feed"].append((cx, cy))
+                    self.pots["feed"].append(pot_data)
 
     def get_zone(self, x, y):
         # Find nearest pot
         min_dist_feed = float('inf')
-        for px, py in self.pots["feed"]:
+        for pot in self.pots["feed"]:
+            px, py = pot["center"]
             dist = np.sqrt((x-px)**2 + (y-py)**2)
             if dist < min_dist_feed: min_dist_feed = dist
             
         min_dist_water = float('inf')
-        for px, py in self.pots["water"]:
+        for pot in self.pots["water"]:
+            px, py = pot["center"]
             dist = np.sqrt((x-px)**2 + (y-py)**2)
             if dist < min_dist_water: min_dist_water = dist
             

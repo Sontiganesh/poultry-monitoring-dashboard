@@ -182,7 +182,8 @@ if st.session_state.processing and video_path is not None:
                     if conf > 0.05:
                         world_dets.append({
                             "class_name": cls_name,
-                            "center": ((x1+x2)//2, (y1+y2)//2)
+                            "center": ((x1+x2)//2, (y1+y2)//2),
+                            "box": (x1, y1, x2, y2)
                         })
                 zone_manager.update_pots(world_dets)
             
