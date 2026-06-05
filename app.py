@@ -163,7 +163,16 @@ if st.session_state.processing and video_path is not None:
             
             # Filter out standard YOLO detections that perfectly overlap with known pots
             detections = []
+            
+            # Filter out obvious inanimate objects that YOLO misclassifies the red pots as.
+            # We explicitly DO NOT ignore "sports ball", "backpack", or "umbrella" because 
+            # standard YOLO often misclassifies curled-up white chickens as those!
+            ignored_classes = ["bowl", "cup", "vase", "potted plant", "fire hydrant", "bottle", "wine glass", "traffic light", "chair"]
+            
             for d in raw_detections:
+                if d.get("class_name", "") in ignored_classes:
+                    continue
+                    
                 cx, cy = d["center"]
                 is_pot = False
                 for pot in zone_manager.pots["feed"] + zone_manager.pots["water"]:
