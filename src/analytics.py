@@ -31,7 +31,9 @@ class PoultryAnalytics:
         self.last_huddle_alert = 0
         
     def _is_chicken(self, class_name):
-        return class_name in ["chicken", "bird"]
+        if self._is_human(class_name) or self._is_pot(class_name):
+            return False
+        return True
         
     def _is_human(self, class_name):
         return class_name == "person"

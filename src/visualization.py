@@ -38,6 +38,7 @@ class Visualizer:
             class_name = det.get("class_name", "bird")
             is_human = (class_name == "person")
             is_pot = ("pot" in class_name)
+            is_chicken = not (is_human or is_pot)
             
             # Update heatmap
             # Add a Gaussian blob
@@ -63,7 +64,12 @@ class Visualizer:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             
             # Draw label
-            display_name = custom_tags.get(str(track_id), custom_tags.get(track_id, f"{class_name.capitalize()}:{track_id}"))
+            if is_chicken:
+                display_class = "Chicken"
+            else:
+                display_class = class_name.capitalize()
+                
+            display_name = custom_tags.get(str(track_id), custom_tags.get(track_id, f"{display_class}:{track_id}"))
             label = f"{display_name} {conf:.2f} ({status})"
             cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
