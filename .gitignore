@@ -1,6 +1,7 @@
 *.pt
 __pycache__/
 *.mp4
+!videos/*.mp4
 *.avi
 *.log
 .env
