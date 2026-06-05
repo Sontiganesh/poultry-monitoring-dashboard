@@ -48,8 +48,9 @@ class Visualizer:
             conf = det["conf"]
             class_id = det.get("class_id", 14)
             class_name = det.get("class_name", "bird")
-            is_human = (class_name == "person")
-            is_pot = ("pot" in class_name)
+            class_id = det.get("class_id", -1)
+            is_human = class_id == 0 or class_name in ("person", "human", "worker")
+            is_pot = ("pot" in class_name) or ("bowl" in class_name)
             is_chicken = not (is_human or is_pot)
             
             # Update heatmap

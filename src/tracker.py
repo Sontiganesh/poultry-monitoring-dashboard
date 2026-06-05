@@ -40,9 +40,7 @@ class PoultryTracker:
 
         
     def process_frame(self, frame, conf_threshold=0.15, classes=None):
-        # To drastically improve accuracy on dense flocks without fine-tuning:
-        # iou=0.85 allows highly overlapping bounding boxes, preventing NMS from deleting packed chickens
-        # imgsz=320 forces the AI to run 4x faster on CPU to eliminate stuttering lag on weak servers
+        # Run chicken tracking at imgsz=320 for speed
         results = self.model.track(frame, persist=True, classes=classes, conf=conf_threshold, tracker=self.tracker_type, verbose=False, iou=0.85, imgsz=320)
         
         detections = []
@@ -53,10 +51,7 @@ class PoultryTracker:
                 conf = float(box.conf[0])
                 class_id = int(box.cls[0]) if box.cls is not None else 14
                 class_name = self.model.names[class_id]
-                
-                # Ensure it has an ID
                 track_id = int(box.id[0]) if box.id is not None else None
-                
                 if track_id is not None:
                     detections.append({
                         "track_id": track_id,
@@ -66,5 +61,29 @@ class PoultryTracker:
                         "conf": conf,
                         "center": ((x1 + x2) // 2, (y1 + y2) // 2)
                     })
-                    
+        
+        # Run a SEPARATE dedicated human detection pass at higher resolution.
+        # Humans are tall/thin and get missed at imgsz=320. This uses a fixed person-class filter
+        # so it is cheap (no tracking overhead) and runs fast.
+        human_results = self.model(frame, classes=[0], conf=0.25, verbose=False, imgsz=640)
+        human_track_id_start = 9000  # Use high IDs so they never clash with chicken IDs
+        for i, box in enumerate(human_results[0].boxes if human_results[0].boxes else []):
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            conf = float(box.conf[0])
+            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+            # Check if this person is not already detected
+            already_detected = any(
+                abs(d["center"][0] - cx) < 30 and abs(d["center"][1] - cy) < 30
+                for d in detections
+            )
+            if not already_detected:
+                detections.append({
+                    "track_id": human_track_id_start + i,
+                    "class_id": 0,
+                    "class_name": "person",
+                    "box": (x1, y1, x2, y2),
+                    "conf": conf,
+                    "center": (cx, cy)
+                })
+        
         return detections
