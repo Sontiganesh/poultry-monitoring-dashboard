@@ -173,7 +173,8 @@ def load_zone_detector():
 def load_tracker(model_path, tracker_algo):
     return PoultryTracker(model_path, tracker_algo)
 
-# video_path is already correctly set above from auto_video_path or sidebar logicif 'analytics' not in st.session_state:
+# video_path is already correctly set above from auto_video_path or sidebar logic
+if 'analytics' not in st.session_state:
     st.session_state.analytics = PoultryAnalytics()
     
 # Layout for Video and Dashboard
