@@ -197,29 +197,30 @@ with col1:
         f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="width: 100%; border-radius: 8px;">',
         unsafe_allow_html=True
     )
-        st.subheader("Analytics Dashboard")
-        # Metric placeholders
-        m_col1, m_col2, m_col_human = st.columns(3)
-        m_total = m_col1.empty()
-        m_active = m_col2.empty()
-        m_humans = m_col_human.empty()
-        
-        m_col3, m_col4 = st.columns(2)
-        m_score = m_col3.empty()
-        m_zone = m_col4.empty()
-        
-        m_col5, m_col6 = st.columns(2)
-        m_alerts = m_col5.empty()
-        m_uniformity = m_col6.empty()
-        
-        st.subheader("Live Analytics Charts")
-        zone_chart_placeholder = st.empty()
-        activity_chart_placeholder = st.empty()
-        
-        st.subheader("Recent Alerts")
-        alert_box = st.empty()
-        
-        report_placeholder = st.empty()
+with col2:
+    st.subheader("Analytics Dashboard")
+    # Metric placeholders
+    m_col1, m_col2, m_col_human = st.columns(3)
+    m_total = m_col1.empty()
+    m_active = m_col2.empty()
+    m_humans = m_col_human.empty()
+    
+    m_col3, m_col4 = st.columns(2)
+    m_score = m_col3.empty()
+    m_zone = m_col4.empty()
+    
+    m_col5, m_col6 = st.columns(2)
+    m_alerts = m_col5.empty()
+    m_uniformity = m_col6.empty()
+    
+    st.subheader("Live Analytics Charts")
+    zone_chart_placeholder = st.empty()
+    activity_chart_placeholder = st.empty()
+    
+    st.subheader("Recent Alerts")
+    alert_box = st.empty()
+    
+    report_placeholder = st.empty()
 
 if st.session_state.processing and video_path is not None:
     tracker = load_tracker(selected_model_path, selected_tracker)
