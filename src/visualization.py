@@ -41,7 +41,7 @@ class Visualizer:
             # Draw box
             status = "Active"
             if is_human:
-                color = (255, 165, 0) # Orange for human
+                color = (0, 165, 255) # BGR Orange for human
                 status = "Human"
             else:
                 color = (0, 255, 0)

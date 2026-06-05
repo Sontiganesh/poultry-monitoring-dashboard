@@ -154,8 +154,9 @@ if st.session_state.processing and video_path is not None:
                 cx, cy = det["center"]
                 x1, y1, x2, y2 = det["box"]
                 box_area = (x2 - x1) * (y2 - y1)
+                class_id = det.get("class_id", 14)
                 zone = zone_manager.get_zone(cx, cy)
-                analytics.update(track_id, cx, cy, zone, box_area)
+                analytics.update(track_id, cx, cy, zone, class_id=class_id, box_area=box_area)
                 
             # Run flock-level analytics (huddling)
             analytics.analyze_flock()
