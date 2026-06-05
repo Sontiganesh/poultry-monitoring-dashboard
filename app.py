@@ -178,8 +178,8 @@ if st.session_state.processing and video_path is not None:
         # Get frame size for zones
         ret, frame = cap.read()
         if ret:
-            # Resize frame to 480p to drastically reduce CPU rendering/encoding bottleneck
-            frame = cv2.resize(frame, (854, 480))
+            # Resize frame to 360p to drastically reduce CPU rendering/encoding bottleneck
+            frame = cv2.resize(frame, (640, 360))
             h, w = frame.shape[:2]
             zone_manager = ZoneManager(w, h)
         else:
@@ -215,7 +215,7 @@ if st.session_state.processing and video_path is not None:
             if not ret or frame is None:
                 break
                 
-            frame = cv2.resize(frame, (854, 480))
+            frame = cv2.resize(frame, (640, 360))
                 
             frame_count += 1
             
@@ -287,19 +287,19 @@ if st.session_state.processing and video_path is not None:
             
             # Show heatmap optionally
             heatmap = visualizer.get_heatmap_overlay(frame_disp)
-            
-            # Convert to RGB for Streamlit (Video only)
-            frame_rgb = cv2.cvtColor(frame_disp, cv2.COLOR_BGR2RGB)
-            
-            # --- UI Rendering Optimizations ---
+            # --- SUPER FAST WEBSOCKET ENCODING HACK ---
+            # Streamlit natively uses the slow Python 'Pillow' library to encode numpy arrays into JPEGs.
+            # Doing this 24 times a second maxes out the CPU. By using OpenCV's highly optimized C++ 
+            # engine, we compress the frame to a tiny JPEG byte string in <3 milliseconds!
             
             # 1. Update Video Feed EVERY frame for buttery smooth 24 FPS playback
-            video_placeholder.image(frame_rgb, channels="RGB", use_container_width=True)
+            _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
+            video_placeholder.image(buffer.tobytes(), use_container_width=True)
             
             # 2. Update Heatmap occasionally to save massive WebSocket bandwidth
             if frame_count % 24 == 0:
-                heatmap_rgb = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-                heatmap_placeholder.image(heatmap_rgb, channels="RGB", use_container_width=True)
+                _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
+                heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
             
             # 3. Update Charts & Metrics at 1 FPS (Every 30 frames)
             if frame_count % 30 == 0:
