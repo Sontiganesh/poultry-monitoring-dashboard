@@ -37,8 +37,10 @@ st.sidebar.header("Detection Settings")
 model_size = st.sidebar.selectbox("Model Size", [
     "Nano (yolov8n.pt - Fast)", 
     "Small (yolov8s.pt - Better)", 
-    "Medium (yolov8m.pt - Best/Slow)"
-])
+    "Medium (yolov8m.pt - Best/Slow)",
+    "World Small (yolov8s-world.pt - Zero-Shot)",
+    "World Medium (yolov8m-worldv2.pt - Zero-Shot)"
+], index=4) # Default to World Medium to fix the accuracy issue
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.10, 0.05)
 
 target_classes = None # Do NOT filter classes, so misclassified chickens aren't dropped!
@@ -49,7 +51,9 @@ selected_tracker = "botsort" if "BoTSORT" in tracker_algo_ui else "bytetrack"
 model_path_map = {
     "Nano (yolov8n.pt - Fast)": "yolov8n.pt",
     "Small (yolov8s.pt - Better)": "yolov8s.pt",
-    "Medium (yolov8m.pt - Best/Slow)": "yolov8m.pt"
+    "Medium (yolov8m.pt - Best/Slow)": "yolov8m.pt",
+    "World Small (yolov8s-world.pt - Zero-Shot)": "yolov8s-world.pt",
+    "World Medium (yolov8m-worldv2.pt - Zero-Shot)": "yolov8m-worldv2.pt"
 }
 selected_model_path = model_path_map[model_size]
 

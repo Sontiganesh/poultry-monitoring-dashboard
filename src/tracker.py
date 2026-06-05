@@ -33,7 +33,8 @@ class PoultryTracker:
         # Initialize YOLOv8 model
         if 'world' in model_path.lower():
             self.model = YOLOWorld(model_path)
-            self.model.set_classes(["person", "bird", "feeding pot", "water pot"])
+            # Use highly descriptive semantic text prompts to achieve fine-tuned accuracy without actually fine-tuning
+            self.model.set_classes(["white broiler chicken", "chicken", "poultry", "white bird", "person"])
         else:
             self.model = YOLO(model_path)
 
