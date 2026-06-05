@@ -17,6 +17,13 @@ from src.analytics import PoultryAnalytics
 from src.zones import ZoneManager
 from src.visualization import Visualizer
 from src.reporting import ReportGenerator
+from src import stream_server
+
+# Start the MJPEG streaming server once (daemon thread, port 8502)
+# This runs independently of Streamlit and streams video like a real IP camera.
+if "stream_server_started" not in st.session_state:
+    stream_server.start_stream_server(port=8502)
+    st.session_state.stream_server_started = True
 
 st.set_page_config(page_title="AI Poultry Monitoring", layout="wide")
 
@@ -134,7 +141,15 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     st.subheader("Live Feed")
+    # Use native MJPEG stream via HTML <img> tag instead of st.image().
+    # This bypasses Streamlit's entire WebSocket→React pipeline for video.
+    # The browser renders MJPEG natively at the OS level — zero JS overhead.
+    SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
     video_placeholder = st.empty()
+    video_placeholder.markdown(
+        f'<img src="http://{SERVER_IP}:8502/video_feed" width="100%" style="border-radius:8px;">',
+        unsafe_allow_html=True
+    )
     
     st.subheader("Heatmap")
     heatmap_placeholder = st.empty()
@@ -288,19 +303,20 @@ if st.session_state.processing and video_path is not None:
                 # Use cached detections to keep the video looking smooth without running YOLO
                 detections = last_detections
                 
-            # Only draw expensive overlays every 2nd frame to cut CPU drawing cost in half
+            # Draw overlays every 2nd frame and push to the MJPEG stream server.
+            # The browser gets the video directly as a native MJPEG stream — zero Streamlit overhead!
             if frame_count % 2 == 0:
                 frame_disp = visualizer.draw_zones(frame, zone_manager)
                 frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
                 
-                # Encode using fast OpenCV C++ JPEG encoder
-                _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 30])
-                video_placeholder.image(buffer.tobytes(), use_container_width=True)
+                # Push to MJPEG server (NOT to Streamlit WebSocket — huge speed difference!)
+                _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+                stream_server.push_frame(buffer.tobytes())
             
-            # Update Heatmap only once every 3 seconds to save massive CPU and bandwidth
+            # Update Heatmap only once every 3 seconds to save CPU and bandwidth
             if frame_count % (target_fps * 3) == 0:
-                heatmap = visualizer.get_heatmap_overlay(frame if 'frame_disp' not in dir() else frame_disp)
-                _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 30])
+                heatmap = visualizer.get_heatmap_overlay(frame_disp if 'frame_disp' in dir() else frame)
+                _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
                 heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
             
             # 3. Update Charts & Metrics at 1 FPS (Every 30 frames)
