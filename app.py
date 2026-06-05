@@ -189,14 +189,14 @@ if st.session_state.processing and video_path is not None:
         fps = cap.get(cv2.CAP_PROP_FPS)
         if fps <= 0: fps = 30
         
-        # Target 24 FPS for smooth movie-like video playback
-        target_fps = 24
+        # Target 15 FPS for the golden mean between perfect smoothness and zero server lag
+        target_fps = 15
         frame_delay = 1.0 / target_fps
         
         # Calculate how many frames to skip reading so the video still plays at normal speed
         video_frame_jump = max(1, int(fps / target_fps))
         
-        frame_skip = 6 # Run heavy AI models every 6th processed frame (i.e., 4 times a second)
+        frame_skip = 5 # Run heavy AI models every 5th processed frame (i.e., 3 times a second)
         frame_count = 0
         last_detections = []
         
@@ -272,8 +272,9 @@ if st.session_state.processing and video_path is not None:
                     zone = zone_manager.get_zone(cx, cy)
                     analytics.update(track_id, cx, cy, zone, class_id=class_id, class_name=class_name, box_area=box_area)
                     
-                # Run flock-level analytics (huddling)
-                analytics.analyze_flock()
+                # Run flock-level analytics (huddling) at 1 FPS to save massive CPU time
+                if frame_count % target_fps == 0:
+                    analytics.analyze_flock()
                 
                 # Cache detections for the next skipped frames
                 last_detections = detections
