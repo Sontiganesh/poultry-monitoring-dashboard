@@ -17,8 +17,8 @@ from src.analytics import PoultryAnalytics
 from src.zones import ZoneManager
 from src.visualization import Visualizer
 from src.reporting import ReportGenerator
-from src import stream_server  # Flask MJPEG server auto-starts on import
 
+# MJPEG frames are shared via this file with the standalone Flask stream service (port 8502)
 FRAME_PATH = "/tmp/poultry_latest_frame.jpg"
 
 def push_video_frame(jpeg_bytes: bytes):
