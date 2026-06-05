@@ -42,7 +42,8 @@ class PoultryTracker:
     def process_frame(self, frame, conf_threshold=0.15, classes=None):
         # To drastically improve accuracy on dense flocks without fine-tuning:
         # iou=0.85 allows highly overlapping bounding boxes, preventing NMS from deleting packed chickens
-        results = self.model.track(frame, persist=True, classes=classes, conf=conf_threshold, tracker=self.tracker_type, verbose=False, iou=0.85)
+        # imgsz=320 forces the AI to run 4x faster on CPU to eliminate stuttering lag on weak servers
+        results = self.model.track(frame, persist=True, classes=classes, conf=conf_threshold, tracker=self.tracker_type, verbose=False, iou=0.85, imgsz=320)
         
         detections = []
         if len(results) > 0 and results[0].boxes is not None:
