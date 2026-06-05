@@ -14,24 +14,45 @@ from src.reporting import ReportGenerator
 
 st.set_page_config(page_title="AI Poultry Monitoring", layout="wide")
 
+# Embedded Demo Mode Logic
+query_params = st.query_params
+demo_video = query_params.get("video")
+demo_shed = query_params.get("shed")
+is_embedded = False
+auto_video_path = None
+
+if demo_video:
+    is_embedded = True
+    auto_video_path = f"videos/{demo_video}.mp4"
+elif demo_shed:
+    is_embedded = True
+    auto_video_path = f"videos/shed{demo_shed}.mp4"
+
+if is_embedded and 'auto_started' not in st.session_state:
+    st.session_state.processing = True
+    st.session_state.auto_started = True
+
 st.title("🐔 Poultry Monitoring Dashboard")
 st.markdown("Real-time tracking, behavior analysis, and alerting using YOLOv8 & ByteTrack.")
 
 # --- Sidebar ---
-st.sidebar.header("Video Input")
-input_source = st.sidebar.radio("Select Source", ["Upload Video", "Webcam", "RTSP Stream"])
-
-video_path = None
-if input_source == "Upload Video":
-    uploaded_file = st.sidebar.file_uploader("Upload MP4", type=['mp4', 'avi'])
-    if uploaded_file is not None:
-        tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-        tfile.write(uploaded_file.read())
-        video_path = tfile.name
-elif input_source == "Webcam":
-    video_path = 0 # default webcam
-elif input_source == "RTSP Stream":
-    video_path = st.sidebar.text_input("RTSP URL", "rtsp://localhost:8554/stream")
+if not is_embedded:
+    st.sidebar.header("Video Input")
+    input_source = st.sidebar.radio("Select Source", ["Upload Video", "Webcam", "RTSP Stream"])
+    
+    video_path = None
+    if input_source == "Upload Video":
+        uploaded_file = st.sidebar.file_uploader("Upload MP4", type=['mp4', 'avi'])
+        if uploaded_file is not None:
+            tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+            tfile.write(uploaded_file.read())
+            video_path = tfile.name
+    elif input_source == "Webcam":
+        video_path = 0 # default webcam
+    elif input_source == "RTSP Stream":
+        video_path = st.sidebar.text_input("RTSP URL", "rtsp://localhost:8554/stream")
+else:
+    video_path = auto_video_path
 
 st.sidebar.header("Detection Settings")
 model_size = st.sidebar.selectbox("Model Size", [
@@ -57,8 +78,6 @@ model_path_map = {
 }
 selected_model_path = model_path_map[model_size]
 
-start_button = st.sidebar.button("Start Processing")
-
 st.sidebar.header("Identity Tag Manager")
 st.sidebar.markdown("Map IDs to names (e.g. `5:Worker John`)")
 tag_input = st.sidebar.text_area("Custom Tags", "")
@@ -68,16 +87,22 @@ for line in tag_input.split('\n'):
         k, v = line.split(':', 1)
         custom_tags[k.strip()] = v.strip()
 
-# Stop processing using session state since button click reloads
-if 'processing' not in st.session_state:
-    st.session_state.processing = False
+if not is_embedded:
+    start_button = st.sidebar.button("Start Processing")
 
-if start_button:
-    st.session_state.processing = True
+    # Stop processing using session state since button click reloads
+    if 'processing' not in st.session_state:
+        st.session_state.processing = False
 
-stop_button = st.sidebar.button("Stop")
-if stop_button:
-    st.session_state.processing = False
+    if start_button:
+        st.session_state.processing = True
+
+    stop_button = st.sidebar.button("Stop")
+    if stop_button:
+        st.session_state.processing = False
+else:
+    if 'processing' not in st.session_state:
+        st.session_state.processing = True
 
 # --- Initialize Modules ---
 from ultralytics import YOLOWorld
