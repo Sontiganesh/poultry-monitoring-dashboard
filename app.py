@@ -46,20 +46,16 @@ mode = query_params.get("mode")
 # --- EMBED MODE CONFIGURATION ---
 if mode in ["embed", "video_only"]:
     # Hide sidebar and header/footer for clean iframe embedding
-    css = """
-        <style>
-            [data-testid="stSidebar"] { display: none !important; }
-            header { display: none !important; }
-            footer { display: none !important; }
-        </style>
-    """
+    css = """<style>
+[data-testid="stSidebar"] { display: none !important; }
+header { display: none !important; }
+footer { display: none !important; }
+</style>"""
     
     if mode == "video_only":
-        css += """
-            <style>
-                .block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
-            </style>
-        """
+        css += """<style>
+.block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
+</style>"""
         
     st.markdown(css, unsafe_allow_html=True)
     
@@ -95,8 +91,9 @@ if is_embedded and 'auto_started' not in st.session_state:
     st.session_state.processing = True
     st.session_state.auto_started = True
 
-st.title("🐔 Poultry Monitoring Dashboard")
-st.markdown("Real-time tracking, behavior analysis, and alerting using YOLOv8 & ByteTrack.")
+if mode != "video_only":
+    st.title("🐔 Poultry Monitoring Dashboard")
+    st.markdown("Real-time tracking, behavior analysis, and alerting using YOLOv8 & ByteTrack.")
 
 # --- Sidebar ---
 if not is_embedded:
