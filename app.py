@@ -199,6 +199,10 @@ with col1:
         f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="width: 100%; border-radius: 8px;">',
         unsafe_allow_html=True
     )
+    
+    st.subheader("Heatmap")
+    heatmap_placeholder = st.empty()
+    
 with col2:
     st.subheader("Analytics Dashboard")
     # Metric placeholders
