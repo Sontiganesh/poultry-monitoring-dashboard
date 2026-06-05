@@ -189,19 +189,21 @@ if 'analytics' not in st.session_state:
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("Live Feed")
-    # Use native MJPEG stream via HTML <img> tag.
-    # The session ID completely isolates each user's video feed!
-    SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
+    tab1, tab2 = st.tabs(["🔴 Live Feed", "🔥 Heatmap"])
     
-    video_placeholder = st.empty()
-    video_placeholder.markdown(
-        f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="width: 100%; border-radius: 8px;">',
-        unsafe_allow_html=True
-    )
-    
-    st.subheader("Heatmap")
-    heatmap_placeholder = st.empty()
+    with tab1:
+        # Use native MJPEG stream via HTML <img> tag.
+        # The session ID completely isolates each user's video feed!
+        SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
+        
+        video_placeholder = st.empty()
+        video_placeholder.markdown(
+            f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" style="width: 100%; border-radius: 8px;">',
+            unsafe_allow_html=True
+        )
+        
+    with tab2:
+        heatmap_placeholder = st.empty()
     
 with col2:
     st.subheader("Analytics Dashboard")
