@@ -85,10 +85,10 @@ class Visualizer:
             label = f"{display_name} {conf:.2f} ({status})"
             cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
-            # Draw trail
+            # Draw trail (only last 8 points to save CPU drawing time)
             if track_id in analytics.history:
                 history = analytics.history[track_id]
-                pts = [ (int(p["x"]), int(p["y"])) for p in history[-30:] ] # last 30 points
+                pts = [ (int(p["x"]), int(p["y"])) for p in history[-8:] ] # last 8 points
                 for i in range(1, len(pts)):
                     cv2.line(frame, pts[i-1], pts[i], color, 2)
                     

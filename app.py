@@ -196,7 +196,8 @@ if st.session_state.processing and video_path is not None:
         # Calculate how many frames to skip reading so the video still plays at normal speed
         video_frame_jump = max(1, int(fps / target_fps))
         
-        frame_skip = 5 # Run heavy AI models every 5th processed frame (i.e., 2 times a second)
+        frame_skip = 8 # Run YOLO only every 8th frame to maximally free up the CPU
+        zone_detected_once = False # Only run zone_detector ONCE at startup, not every 90 frames
         frame_count = 0
         last_detections = []
         
@@ -247,8 +248,9 @@ if st.session_state.processing and video_path is not None:
                     if not is_pot:
                         detections.append(d)
                 
-                # Update dynamic zones using World Model
-                if frame_count % 90 == 0 or (not zone_manager.pots["feed"] and not zone_manager.pots["water"]):
+                # Run zone_detector ONCE at startup only - not every 90 frames!
+                # Running a 2nd AI model every 3 seconds is a massive hidden CPU spike.
+                if not zone_detected_once:
                     world_results = zone_detector(frame, verbose=False)
                     world_dets = []
                     for box in world_results[0].boxes:
@@ -263,6 +265,7 @@ if st.session_state.processing and video_path is not None:
                                 "box": (x1, y1, x2, y2)
                             })
                     zone_manager.update_pots(world_dets)
+                    zone_detected_once = True
                 
                 # Update analytics with new tracking
                 for det in detections:
