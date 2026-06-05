@@ -63,7 +63,7 @@ model_size = st.sidebar.selectbox("Model Size", [
     "Medium (yolov8m.pt - Best/Slow)",
     "World Small (yolov8s-world.pt - Zero-Shot)",
     "World Medium (yolov8m-worldv2.pt - Zero-Shot)"
-], index=4) # Default to World Medium to fix the accuracy issue
+], index=0) # Default to Nano for maximum performance on CPU
 conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.10, 0.05)
 
 target_classes = None # Do NOT filter classes, so misclassified chickens aren't dropped!
