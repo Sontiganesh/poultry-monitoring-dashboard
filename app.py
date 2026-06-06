@@ -378,61 +378,61 @@ if st.session_state.processing and video_path is not None:
             if mode != "video_only":
                 # Update Heatmap only once every 3 seconds to save CPU and bandwidth
                 if frame_count % (target_fps * 3) == 0:
-                        heatmap = visualizer.get_heatmap_overlay(frame_disp if 'frame_disp' in dir() else frame)
-                        _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
-                        heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
+                    heatmap = visualizer.get_heatmap_overlay(frame_disp if 'frame_disp' in dir() else frame)
+                    _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
+                    heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
+                
+                # 3. Update Charts & Metrics at 1 FPS (Every 30 frames)
+                if frame_count % 30 == 0:
+                    stats = analytics.get_summary_stats()
                     
-                    # 3. Update Charts & Metrics at 1 FPS (Every 30 frames)
-                    if frame_count % 30 == 0:
-                        stats = analytics.get_summary_stats()
+                    # Update metrics
+                    m_total.metric("Total Chickens", stats["total_chickens"])
+                    m_active.metric("Active (Moving)", stats["active"])
+                    m_humans.metric("Humans Detected", stats.get("total_humans", 0))
+                    m_score.metric("Avg Activity Score", f"{stats['avg_activity_score']}%")
+                    
+                    m_zone.metric("Most Visited Zone", stats["most_visited_zone"].replace(" Zone", ""))
+                    m_alerts.metric("Active Alerts", stats["alert_count"])
+                    m_uniformity.metric("Size Uniformity", stats["size_uniformity"])
+                    
+                    # Update Charts
+                    if stats["timeline"]["timestamps"]:
+                        # Zone utilization chart
+                        zone_df = pd.DataFrame({
+                            "Feed": stats["timeline"]["feed_zone"],
+                            "Water": stats["timeline"]["water_zone"],
+                            "Rest": stats["timeline"]["rest_zone"]
+                        }, index=stats["timeline"]["timestamps"])
+                        zone_chart_placeholder.line_chart(zone_df)
                         
-                        # Update metrics
-                        m_total.metric("Total Chickens", stats["total_chickens"])
-                        m_active.metric("Active (Moving)", stats["active"])
-                        m_humans.metric("Humans Detected", stats.get("total_humans", 0))
-                        m_score.metric("Avg Activity Score", f"{stats['avg_activity_score']}%")
+                        # Activity trend chart
+                        act_df = pd.DataFrame({
+                            "Avg Activity": stats["timeline"]["avg_activity"]
+                        }, index=stats["timeline"]["timestamps"])
+                        activity_chart_placeholder.line_chart(act_df)
+                    
+                    # Update Alerts
+                    if analytics.alerts:
+                        alert_html = "".join([f"<p style='color:red;'>⚠️ {a}</p>" for a in analytics.alerts[-5:]])
+                        alert_box.markdown(alert_html, unsafe_allow_html=True)
                         
-                        m_zone.metric("Most Visited Zone", stats["most_visited_zone"].replace(" Zone", ""))
-                        m_alerts.metric("Active Alerts", stats["alert_count"])
-                        m_uniformity.metric("Size Uniformity", stats["size_uniformity"])
-                        
-                        # Update Charts
-                        if stats["timeline"]["timestamps"]:
-                            # Zone utilization chart
-                            zone_df = pd.DataFrame({
-                                "Feed": stats["timeline"]["feed_zone"],
-                                "Water": stats["timeline"]["water_zone"],
-                                "Rest": stats["timeline"]["rest_zone"]
-                            }, index=stats["timeline"]["timestamps"])
-                            zone_chart_placeholder.line_chart(zone_df)
-                            
-                            # Activity trend chart
-                            act_df = pd.DataFrame({
-                                "Avg Activity": stats["timeline"]["avg_activity"]
-                            }, index=stats["timeline"]["timestamps"])
-                            activity_chart_placeholder.line_chart(act_df)
-                        
-                        # Update Alerts
-                        if analytics.alerts:
-                            alert_html = "".join([f"<p style='color:red;'>⚠️ {a}</p>" for a in analytics.alerts[-5:]])
-                            alert_box.markdown(alert_html, unsafe_allow_html=True)
-                            
-                    # 4. Dispatch Webhook payload every 30 seconds (30 * target_fps frames)
-                    if webhook_url and frame_count % (target_fps * 30) == 0:
-                        stats = analytics.get_summary_stats()
-                        payload = {
-                            "total_chickens": stats["total_chickens"],
-                            "humans_detected": len([t for t in detections if t.get("class_name") in ["person", "human", "worker"]]),
-                            "active_chickens": stats["active"],
-                            "avg_activity_score": stats["avg_activity_score"],
-                            "zone_occupancy": {
-                                "Feed Zone": stats["timeline"]["feed_zone"][-1] if stats["timeline"]["feed_zone"] else 0,
-                                "Water Zone": stats["timeline"]["water_zone"][-1] if stats["timeline"]["water_zone"] else 0,
-                                "Rest Zone": stats["timeline"]["rest_zone"][-1] if stats["timeline"]["rest_zone"] else 0
-                            },
-                            "active_alerts": analytics.alerts[-5:] if analytics.alerts else []
-                        }
-                        st.session_state.webhook_dispatcher.dispatch(webhook_url, payload)
+                # 4. Dispatch Webhook payload every 30 seconds (30 * target_fps frames)
+                if webhook_url and frame_count % (target_fps * 30) == 0:
+                    stats = analytics.get_summary_stats()
+                    payload = {
+                        "total_chickens": stats["total_chickens"],
+                        "humans_detected": len([t for t in detections if t.get("class_name") in ["person", "human", "worker"]]),
+                        "active_chickens": stats["active"],
+                        "avg_activity_score": stats["avg_activity_score"],
+                        "zone_occupancy": {
+                            "Feed Zone": stats["timeline"]["feed_zone"][-1] if stats["timeline"]["feed_zone"] else 0,
+                            "Water Zone": stats["timeline"]["water_zone"][-1] if stats["timeline"]["water_zone"] else 0,
+                            "Rest Zone": stats["timeline"]["rest_zone"][-1] if stats["timeline"]["rest_zone"] else 0
+                        },
+                        "active_alerts": analytics.alerts[-5:] if analytics.alerts else []
+                    }
+                    st.session_state.webhook_dispatcher.dispatch(webhook_url, payload)
 
             elapsed = time.time() - loop_start
             
