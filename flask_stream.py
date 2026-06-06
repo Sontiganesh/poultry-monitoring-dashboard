@@ -1,18 +1,54 @@
 """
-Standalone MJPEG Streaming Server
-Runs independently from Streamlit as its own systemd service on port 8502.
-Reads frames from a shared memory file that app.py writes to.
+Unified MJPEG Streaming + REST API Server
+=========================================
+Port 8502 — runs as a standalone systemd service alongside Streamlit.
+
+MJPEG Endpoints:
+  GET /video_feed/<session_id>       — Live annotated video stream
+  GET /heatmap_feed/<session_id>     — Live heatmap overlay stream
+
+REST API Endpoints:
+  GET  /api/status                   — System status + uptime
+  GET  /api/metrics                  — Full analytics snapshot
+  GET  /api/alerts                   — Last N alerts
+  GET  /api/events                   — Last N events
+  POST /api/analyze                  — Trigger one-shot analysis (future use)
+
+Health:
+  GET  /health                       — Simple health check
 """
 
-from flask import Flask, Response
+from flask import Flask, Response, jsonify, request
 import time
 import os
 import sys
+import datetime
+
+# Add the project root to the Python path so we can import src/
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from src import state_store
 
 app = Flask(__name__)
 
-def _generate(frame_path):
-    """MJPEG generator that reads the latest frame from disk."""
+
+# ---------------------------------------------------------------------------
+# CORS helper — allow cross-origin requests for embedded product integration
+# ---------------------------------------------------------------------------
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
+
+
+# ---------------------------------------------------------------------------
+# MJPEG Stream
+# ---------------------------------------------------------------------------
+def _generate_mjpeg(frame_path: str, fps: int = 15):
+    """Generator that yields MJPEG frames from the shared disk file."""
+    delay = 1.0 / fps
     while True:
         try:
             if os.path.exists(frame_path):
@@ -21,28 +57,149 @@ def _generate(frame_path):
                 if frame:
                     yield (
                         b"--frame\r\n"
-                        b"Content-Type: image/jpeg\r\n\r\n" +
-                        frame + b"\r\n"
+                        b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
                     )
         except Exception:
             pass
-        time.sleep(0.066)  # ~15 FPS
+        time.sleep(delay)
+
 
 @app.route("/video_feed/<session_id>")
-def video_feed(session_id):
-    # Prevent path traversal attacks
-    safe_session = "".join(c for c in session_id if c.isalnum() or c == '-')
+def video_feed(session_id: str):
+    safe_session = "".join(c for c in session_id if c.isalnum() or c == "-")
     frame_path = f"/tmp/poultry_frame_{safe_session}.jpg"
-    
     return Response(
-        _generate(frame_path),
-        mimetype="multipart/x-mixed-replace; boundary=frame"
+        _generate_mjpeg(frame_path, fps=15),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
     )
+
+
+@app.route("/heatmap_feed/<session_id>")
+def heatmap_feed(session_id: str):
+    safe_session = "".join(c for c in session_id if c.isalnum() or c == "-")
+    frame_path = f"/tmp/poultry_heatmap_{safe_session}.jpg"
+    return Response(
+        _generate_mjpeg(frame_path, fps=5),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
+# ---------------------------------------------------------------------------
+# REST API
+# ---------------------------------------------------------------------------
 
 @app.route("/health")
 def health():
-    return "OK", 200
+    return jsonify({"status": "ok", "timestamp": datetime.datetime.utcnow().isoformat() + "Z"}), 200
 
+
+@app.route("/api/status")
+def api_status():
+    """
+    Returns current system status, uptime, and camera info.
+
+    Example response:
+    {
+      "camera_id": "CAM_01",
+      "status": "running",
+      "video_source": "demo1.mp4",
+      "started_at": "2026-06-06T12:00:00Z",
+      "uptime": "0h 5m 23s",
+      "last_updated": "2026-06-06T12:05:23Z"
+    }
+    """
+    return jsonify(state_store.get_status()), 200
+
+
+@app.route("/api/metrics")
+def api_metrics():
+    """
+    Returns a full analytics snapshot including zone occupancy.
+
+    Example response:
+    {
+      "camera_id": "CAM_01",
+      "status": "running",
+      "last_updated": "...",
+      "metrics": {
+        "total_chickens": 118,
+        "total_humans": 2,
+        "active": 90,
+        "inactive": 28,
+        "avg_activity_score": 74,
+        "most_visited_zone": "Feed Zone",
+        "size_uniformity": "Good",
+        "alert_count": 3
+      },
+      "zone_occupancy": {
+        "Feed Zone": 45,
+        "Water Zone": 20,
+        "Rest Zone": 53,
+        "Entry Zone": 0
+      }
+    }
+    """
+    return jsonify(state_store.get_metrics()), 200
+
+
+@app.route("/api/alerts")
+def api_alerts():
+    """
+    Returns the last N alerts.
+    Query param: ?limit=50 (default 50)
+
+    Example response:
+    [
+      { "message": "Chicken #5 inactive for 15 seconds.", "timestamp": "..." },
+      ...
+    ]
+    """
+    limit = request.args.get("limit", 50, type=int)
+    return jsonify(state_store.get_alerts(limit=limit)), 200
+
+
+@app.route("/api/events")
+def api_events():
+    """
+    Returns the last N events (zone entry/exit, inactivity, crowd, etc.).
+    Query param: ?limit=100 (default 100)
+
+    Example response:
+    [
+      {
+        "event_type": "zone_entry",
+        "track_id": 12,
+        "zone": "Feed Zone",
+        "timestamp": "...",
+        "details": "Chicken #12 entered Feed Zone"
+      },
+      ...
+    ]
+    """
+    limit = request.args.get("limit", 100, type=int)
+    return jsonify(state_store.get_events(limit=limit)), 200
+
+
+@app.route("/api/analyze", methods=["POST", "OPTIONS"])
+def api_analyze():
+    """
+    POST /api/analyze
+    Returns the current metrics snapshot immediately.
+    Future: accept an image upload for one-shot analysis.
+
+    Response is identical to GET /api/metrics.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    snapshot = state_store.get_metrics()
+    snapshot["events"] = state_store.get_events(limit=20)
+    snapshot["alerts"] = state_store.get_alerts(limit=10)
+    return jsonify(snapshot), 200
+
+
+# ---------------------------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    print("[MJPEG] Starting stream server on port 8502...")
+    print("[SERVER] Starting unified MJPEG + REST API server on port 8502...")
     app.run(host="0.0.0.0", port=8502, threaded=True, debug=False)
