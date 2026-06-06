@@ -186,6 +186,15 @@ for line in tag_input.split("\n"):
         k, v = line.split(":", 1)
         custom_tags[k.strip()] = v.strip()
 
+from urllib.parse import urlparse
+
+def is_valid_url(url: str) -> bool:
+    try:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc]) and result.scheme in ["http", "https"]
+    except Exception:
+        return False
+
 # Sidebar — Integrations
 st.sidebar.header("Integrations")
 
@@ -198,6 +207,70 @@ webhook_url = st.sidebar.text_input(
 
 if "webhook_dispatcher" not in st.session_state:
     st.session_state.webhook_dispatcher = WebhookDispatcher(camera_id=camera_id)
+else:
+    st.session_state.webhook_dispatcher.camera_id = camera_id
+
+is_url_valid = True
+if webhook_url:
+    is_url_valid = is_valid_url(webhook_url)
+    if not is_url_valid:
+        st.sidebar.error("⚠️ Invalid Webhook URL. Must be a valid HTTP/HTTPS URL.")
+
+# Test Webhook Button
+if webhook_url and is_url_valid:
+    if st.sidebar.button("🧪 Test Webhook"):
+        with st.sidebar.spinner("Sending sample payload..."):
+            if "analytics" in st.session_state:
+                stats = st.session_state.analytics.get_summary_stats()
+            else:
+                stats = {
+                    "total_chickens": 10,
+                    "total_humans": 1,
+                    "active": 6,
+                    "avg_activity_score": 45,
+                    "alert_count": 0,
+                    "size_uniformity": "High",
+                    "most_visited_zone": "Feed Zone",
+                    "timeline": {"timestamps": []}
+                }
+            
+            # mock zone occupancy or current occupancy
+            zone_occ = {"Feed Zone": 3, "Water Zone": 2, "Rest Zone": 5}
+            
+            payload = st.session_state.webhook_dispatcher.build_payload(
+                analytics_stats=stats,
+                zone_occupancy=zone_occ,
+                events_since_last_ping=[],
+                alerts=[],
+                is_poultry=is_poultry
+            )
+            
+            success, status_code, status_desc = st.session_state.webhook_dispatcher.dispatch(
+                webhook_url, payload, sync=True
+            )
+            
+            if success:
+                st.sidebar.success(f"✅ Sent! Status: {status_code}")
+            else:
+                st.sidebar.error(f"❌ Failed: {status_desc}")
+
+# Sidebar — Webhook Monitor
+st.sidebar.subheader("📈 Webhook Monitor")
+if webhook_url and is_url_valid:
+    dispatcher = st.session_state.webhook_dispatcher
+    st.sidebar.markdown(f"""
+    * **Successes:** `{dispatcher.total_success}`
+    * **Failures:** `{dispatcher.total_failed}`
+    * **Last Sent:** `{dispatcher.last_sent_time or 'Never'}`
+    * **Last Status:** `{dispatcher._last_status_code or 'N/A'}`
+    """)
+    if dispatcher.last_response_body:
+        body_show = dispatcher.last_response_body[:500]
+        if len(dispatcher.last_response_body) > 500:
+            body_show += "\n... (truncated)"
+        st.sidebar.text_area("Last Response Body", body_show, height=80, key="webhook_monitor_last_body")
+else:
+    st.sidebar.info("Configure a valid Webhook URL to monitor delivery.")
 
 # Sidebar — API Info
 SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
@@ -578,7 +651,7 @@ if st.session_state.processing and video_path is not None:
                 # --------------------------------------------------------
                 # Webhook — every 30 seconds
                 # --------------------------------------------------------
-                if webhook_url and frame_count % (target_fps * 30) == 0:
+                if webhook_url and is_url_valid and frame_count % (target_fps * 30) == 0:
                     stats = analytics.get_summary_stats()
                     zone_occ = zone_manager.get_zone_occupancy(last_detections)
                     events_since = state_store.flush_events_since_ping()
@@ -589,6 +662,7 @@ if st.session_state.processing and video_path is not None:
                         zone_occupancy=zone_occ,
                         events_since_last_ping=events_since,
                         alerts=alerts_list,
+                        is_poultry=is_poultry,
                     )
                     st.session_state.webhook_dispatcher.dispatch(webhook_url, payload)
 
