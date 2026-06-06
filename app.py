@@ -464,8 +464,15 @@ if st.session_state.processing and video_path is not None:
         # Sidebar embed links
         st.sidebar.markdown("---")
         st.sidebar.subheader("🔗 Embed Links")
-        embed_url = f"http://{SERVER_IP}:8501/?mode=embed"
-        video_only_url = f"http://{SERVER_IP}:8501/?mode=video_only"
+        
+        extra_params = ""
+        if demo_video:
+            extra_params = f"&video={demo_video}"
+        elif demo_shed:
+            extra_params = f"&shed={demo_shed}"
+            
+        embed_url = f"http://{SERVER_IP}:8501/?mode=embed{extra_params}"
+        video_only_url = f"http://{SERVER_IP}:8501/?mode=video_only{extra_params}"
         st.sidebar.code(
             f'<iframe src="{embed_url}" width="100%" height="900" frameborder="0" allowfullscreen></iframe>',
             language="html",
