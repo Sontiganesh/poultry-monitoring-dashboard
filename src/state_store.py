@@ -8,8 +8,11 @@ the exact same real-time snapshot without any race conditions.
 import threading
 import datetime
 import time
+import json
+import os
 
 _lock = threading.Lock()
+SHM_FILE = "/dev/shm/poultry_state.json"
 
 _state = {
     "camera_id": "CAM_01",
@@ -49,9 +52,28 @@ _state = {
 }
 
 
+def _save_data():
+    try:
+        with open(SHM_FILE, "w", encoding="utf-8") as f:
+            json.dump(_state, f)
+    except Exception:
+        pass
+
+
+def _load_data():
+    try:
+        if os.path.exists(SHM_FILE):
+            with open(SHM_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                _state.update(data)
+    except Exception:
+        pass
+
+
 def set_camera_id(camera_id: str):
     with _lock:
         _state["camera_id"] = camera_id
+        _save_data()
 
 
 def set_status(status: str, video_source: str = None):
@@ -61,6 +83,7 @@ def set_status(status: str, video_source: str = None):
             _state["started_at"] = datetime.datetime.utcnow().isoformat() + "Z"
         if video_source is not None:
             _state["video_source"] = video_source
+        _save_data()
 
 
 def update_metrics(metrics: dict, zone_occupancy: dict = None):
@@ -69,6 +92,7 @@ def update_metrics(metrics: dict, zone_occupancy: dict = None):
         if zone_occupancy:
             _state["zone_occupancy"].update(zone_occupancy)
         _state["last_updated"] = datetime.datetime.utcnow().isoformat() + "Z"
+        _save_data()
 
 
 def add_event(event: dict):
@@ -78,6 +102,7 @@ def add_event(event: dict):
         if len(_state["events"]) > 200:
             _state["events"] = _state["events"][-200:]
         _state["events_since_last_ping"].append(event)
+        _save_data()
 
 
 def add_alert(alert: str):
@@ -86,17 +111,20 @@ def add_alert(alert: str):
         _state["alerts"].append({"message": alert, "timestamp": ts})
         if len(_state["alerts"]) > 100:
             _state["alerts"] = _state["alerts"][-100:]
+        _save_data()
 
 
 def get_snapshot() -> dict:
     """Return a deep-copy snapshot of the entire state (safe to serialise to JSON)."""
     with _lock:
+        _load_data()
         import copy
         return copy.deepcopy(_state)
 
 
 def get_metrics() -> dict:
     with _lock:
+        _load_data()
         import copy
         return {
             "camera_id": _state["camera_id"],
@@ -109,11 +137,13 @@ def get_metrics() -> dict:
 
 def get_alerts(limit: int = 50) -> list:
     with _lock:
+        _load_data()
         return list(_state["alerts"][-limit:])
 
 
 def get_events(limit: int = 100) -> list:
     with _lock:
+        _load_data()
         return list(_state["events"][-limit:])
 
 
@@ -122,11 +152,13 @@ def flush_events_since_ping() -> list:
     with _lock:
         events = list(_state["events_since_last_ping"])
         _state["events_since_last_ping"] = []
+        _save_data()
         return events
 
 
 def get_status() -> dict:
     with _lock:
+        _load_data()
         uptime = None
         if _state["started_at"]:
             started = datetime.datetime.fromisoformat(_state["started_at"].replace("Z", "+00:00"))
