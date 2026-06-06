@@ -456,6 +456,7 @@ if st.session_state.processing and video_path is not None:
                     zone_detected_once = True
 
                 # Update analytics
+                analytics.is_poultry = is_poultry
                 for det in detections:
                     track_id = det["track_id"]
                     cx, cy = det["center"]
@@ -476,7 +477,7 @@ if st.session_state.processing and video_path is not None:
                 # --------------------------------------------------------
                 # Event Engine — fires zone entry/exit, inactivity, crowd
                 # --------------------------------------------------------
-                new_events = event_engine.process(detections, analytics, zone_manager)
+                new_events = event_engine.process(detections, analytics, zone_manager, is_poultry=is_poultry)
                 for evt in new_events:
                     state_store.add_event(evt)
 

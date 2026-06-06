@@ -37,7 +37,7 @@ class EventEngine:
             "details": details,
         }
 
-    def process(self, detections: list, analytics, zone_manager) -> list:
+    def process(self, detections: list, analytics, zone_manager, is_poultry=True) -> list:
         """
         Called once per AI inference cycle.
 
@@ -45,6 +45,7 @@ class EventEngine:
             detections: list of detection dicts from tracker
             analytics: PoultryAnalytics instance
             zone_manager: ZoneManager instance
+            is_poultry: bool, True if poultry mode, False for restaurant/hotel
 
         Returns:
             list of new event dicts fired this cycle
@@ -64,13 +65,15 @@ class EventEngine:
 
             # --- 1. Zone Entry / Exit Events ---
             last_zone = self._last_zone.get(track_id)
+            subject = "Human" if is_human else ("Chicken" if is_poultry else "Person")
+            
             if last_zone is None:
                 # First time we see this track — it's a zone entry
                 events.append(self._make_event(
                     "zone_entry",
                     track_id=track_id,
                     zone=current_zone,
-                    details=f"{'Human' if is_human else 'Chicken'} #{track_id} entered {current_zone}"
+                    details=f"{subject} #{track_id} entered {current_zone}"
                 ))
                 self._first_seen[track_id] = current_time
             elif last_zone != current_zone:
@@ -79,19 +82,19 @@ class EventEngine:
                     "zone_exit",
                     track_id=track_id,
                     zone=last_zone,
-                    details=f"{'Human' if is_human else 'Chicken'} #{track_id} left {last_zone}"
+                    details=f"{subject} #{track_id} left {last_zone}"
                 ))
                 events.append(self._make_event(
                     "zone_entry",
                     track_id=track_id,
                     zone=current_zone,
-                    details=f"{'Human' if is_human else 'Chicken'} #{track_id} entered {current_zone}"
+                    details=f"{subject} #{track_id} entered {current_zone}"
                 ))
 
             self._last_zone[track_id] = current_zone
 
-            # --- 2. Human Detected Event ---
-            if is_human and track_id not in self._human_alerted:
+            # --- 2. Human Detected Event (only in poultry mode) ---
+            if is_poultry and is_human and track_id not in self._human_alerted:
                 events.append(self._make_event(
                     "human_detected",
                     track_id=track_id,
@@ -100,8 +103,8 @@ class EventEngine:
                 ))
                 self._human_alerted.add(track_id)
 
-            # --- 3. Inactivity Threshold Exceeded ---
-            if track_id in analytics.stats:
+            # --- 3. Inactivity Threshold Exceeded (only in poultry mode) ---
+            if is_poultry and track_id in analytics.stats:
                 stats = analytics.stats[track_id]
 
                 if stats.get("is_inactive") and not self._inactivity_fired.get(track_id):
@@ -117,13 +120,20 @@ class EventEngine:
                     # Reset so it can fire again if they stop again
                     self._inactivity_fired[track_id] = False
 
-                # --- 4. Abnormal Movement / Erratic ---
+            # --- 4. Abnormal Movement / Erratic ---
+            if track_id in analytics.stats:
+                stats = analytics.stats[track_id]
                 if stats.get("is_erratic") and not self._erratic_fired.get(track_id):
+                    details = (
+                        f"Chicken #{track_id} showing erratic high-speed movement — possible panic/stress"
+                        if is_poultry else
+                        f"Person #{track_id} showing erratic high-speed movement — possible stress/panic"
+                    )
                     events.append(self._make_event(
                         "abnormal_movement",
                         track_id=track_id,
                         zone=current_zone,
-                        details=f"Chicken #{track_id} showing erratic high-speed movement — possible panic/stress"
+                        details=details
                     ))
                     self._erratic_fired[track_id] = True
                 elif not stats.get("is_erratic"):
@@ -131,29 +141,41 @@ class EventEngine:
 
         # --- 5. Crowd / Cluster Detection ---
         if current_time - self._last_crowd_event > self._crowd_cooldown:
-            chicken_positions = [
-                (det["track_id"], det["center"][0], det["center"][1])
-                for det in detections
-                if det.get("class_id", 14) != 0 and det.get("class_name", "bird") not in ("person", "human", "worker")
-            ]
+            if is_poultry:
+                positions = [
+                    (det["track_id"], det["center"][0], det["center"][1])
+                    for det in detections
+                    if det.get("class_id", 14) != 0 and det.get("class_name", "bird") not in ("person", "human", "worker")
+                ]
+            else:
+                positions = [
+                    (det["track_id"], det["center"][0], det["center"][1])
+                    for det in detections
+                    if det.get("class_id", 14) == 0 or det.get("class_name", "bird") in ("person", "human", "worker")
+                ]
 
             HUDDLE_DISTANCE = 50
             HUDDLE_MIN = 4
             huddle_count = 0
 
-            for i, (t1, x1, y1) in enumerate(chicken_positions):
+            for i, (t1, x1, y1) in enumerate(positions):
                 close = sum(
-                    1 for j, (t2, x2, y2) in enumerate(chicken_positions)
+                    1 for j, (t2, x2, y2) in enumerate(positions)
                     if i != j and np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2) < HUDDLE_DISTANCE
                 )
                 if close >= HUDDLE_MIN - 1:
                     huddle_count += 1
 
             if huddle_count >= HUDDLE_MIN:
+                details = (
+                    f"{huddle_count} chickens tightly clustered — check temperature/disease"
+                    if is_poultry else
+                    f"{huddle_count} people closely gathered."
+                )
                 events.append(self._make_event(
                     "crowd_cluster_detected",
                     zone=None,
-                    details=f"{huddle_count} chickens tightly clustered — check temperature/disease"
+                    details=details
                 ))
                 self._last_crowd_event = current_time
 

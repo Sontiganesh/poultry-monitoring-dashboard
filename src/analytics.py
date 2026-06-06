@@ -29,6 +29,7 @@ class PoultryAnalytics:
         self.HUDDLE_DISTANCE = 50
         self.HUDDLE_MIN_BIRDS = 4
         self.last_huddle_alert = 0
+        self.is_poultry = True
         
     def _is_chicken(self, class_name):
         if self._is_human(class_name) or self._is_pot(class_name):
@@ -93,7 +94,10 @@ class PoultryAnalytics:
                 if speed > self.ERRATIC_SPEED_THRESHOLD:
                     if not stats["is_erratic"]:
                         stats["is_erratic"] = True
-                        self.alerts.append(f"⚡ Chicken #{track_id} erratic movement (Panic/Stress)!")
+                        if self.is_poultry:
+                            self.alerts.append(f"⚡ Chicken #{track_id} erratic movement (Panic/Stress)!")
+                        else:
+                            self.alerts.append(f"⚡ Person #{track_id} erratic movement (running/stress)!")
                 else:
                     stats["is_erratic"] = False
             
@@ -107,6 +111,8 @@ class PoultryAnalytics:
         self._calculate_activity_score(track_id)
         
     def _check_inactivity(self, track_id):
+        if not self.is_poultry:
+            return
         history = self.history[track_id]
         stats = self.stats[track_id]
         
@@ -165,7 +171,10 @@ class PoultryAnalytics:
                 
         if len(huddle_groups) >= self.HUDDLE_MIN_BIRDS:
             if (current_time - self.last_huddle_alert > 30): # Rate limit alert to every 30s
-                self.alerts.append(f"❄️ HUDDLING DETECTED: {len(huddle_groups)} birds clustered tightly. Check temperature!")
+                if self.is_poultry:
+                    self.alerts.append(f"❄️ HUDDLING DETECTED: {len(huddle_groups)} birds clustered tightly. Check temperature!")
+                else:
+                    self.alerts.append(f"👥 CROWD DETECTED: {len(huddle_groups)} people clustered closely.")
                 self.last_huddle_alert = current_time
                 
         # Update Timeline (every 1 second)
