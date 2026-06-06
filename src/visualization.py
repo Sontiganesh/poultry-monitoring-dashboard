@@ -11,8 +11,8 @@ class Visualizer:
         overlay = frame.copy()
         
         is_poultry = getattr(zone_manager, "is_poultry", True)
-        feed_label = "Feed Zone" if is_poultry else "Service Zone"
-        water_label = "Water Zone" if is_poultry else "Seating Zone"
+        feed_label = "Feed Zone" if is_poultry else "Checkout"
+        water_label = "Water Zone" if is_poultry else "Aisle 1"
         
         for pot in zone_manager.pots["feed"]:
             px, py = pot["center"]

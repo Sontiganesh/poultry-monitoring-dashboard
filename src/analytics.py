@@ -188,9 +188,9 @@ class PoultryAnalytics:
                     zone_counts[z] = zone_counts.get(z, 0) + 1
                     active_scores.append(self.stats[tid]["activity_score"])
                     
-            feed_key = "Feed Zone" if self.is_poultry else "Service Zone"
-            water_key = "Water Zone" if self.is_poultry else "Seating Zone"
-            rest_key = "Rest Zone" if self.is_poultry else "Lounge Zone"
+            feed_key = "Feed Zone" if self.is_poultry else "Checkout"
+            water_key = "Water Zone" if self.is_poultry else "Aisle 1"
+            rest_key = "Rest Zone" if self.is_poultry else "Aisle 2"
             
             self.timeline["timestamps"].append(time.strftime("%H:%M:%S"))
             self.timeline["feed_zone"].append(zone_counts.get(feed_key, 0))

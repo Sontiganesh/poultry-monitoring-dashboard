@@ -37,9 +37,9 @@ class WebhookDispatcher:
         recent_alerts = [a["message"] if isinstance(a, dict) else str(a) for a in alerts_src[-10:]]
 
         # Resolve zone names dynamically based on mode
-        feed_key = "Feed Zone" if is_poultry else "Service Zone"
-        water_key = "Water Zone" if is_poultry else "Seating Zone"
-        rest_key = "Rest Zone" if is_poultry else "Lounge Zone"
+        feed_key = "Feed Zone" if is_poultry else "Checkout"
+        water_key = "Water Zone" if is_poultry else "Aisle 1"
+        rest_key = "Rest Zone" if is_poultry else "Aisle 2"
 
         payload = {
             "camera_id": self.camera_id,

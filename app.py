@@ -405,15 +405,15 @@ class AsyncTracker:
             self.running = True
             frame_copy = frame.copy()
 
-            def worker():
+            def worker(f_cpy, c_thr, cls, is_p):
                 dets = self.tracker.process_frame(
-                    frame_copy, conf_threshold=conf_threshold, classes=classes, is_poultry=is_poultry
+                    f_cpy, conf_threshold=c_thr, classes=cls, is_poultry=is_p
                 )
                 with self.lock:
                     self.raw_detections = dets
                 self.running = False
 
-            threading.Thread(target=worker, daemon=True).start()
+            threading.Thread(target=worker, args=(frame_copy, conf_threshold, classes, is_poultry), daemon=True).start()
 
         with self.lock:
             return list(self.raw_detections)
