@@ -116,15 +116,6 @@ if is_embedded and "auto_started" not in st.session_state:
     st.session_state.processing = True
     st.session_state.auto_started = True
 
-# Title
-if mode != "video_only":
-    if is_poultry:
-        st.title("🐔 AI Poultry Monitoring Platform")
-        st.markdown("Real-time tracking · Zone analytics · Event engine · Webhook integration")
-    else:
-        st.title("🏨 AI Smart Space Platform")
-        st.markdown("Real-time occupancy tracking · Zone analytics · Event engine · Webhook integration")
-
 # Sidebar — Video Input
 if not is_embedded:
     st.sidebar.header("Video Input")
@@ -149,6 +140,15 @@ if video_path is not None:
     video_name_lower = str(video_path).lower()
     if any(term in video_name_lower for term in ["demo3", "demo4", "shed3", "shed4", "restaurant", "hotel", "people"]):
         is_poultry = False
+
+# Title
+if mode != "video_only":
+    if is_poultry:
+        st.title("🐔 AI Poultry Monitoring Platform")
+        st.markdown("Real-time tracking · Zone analytics · Event engine · Webhook integration")
+    else:
+        st.title("🏨 AI Smart Space Platform")
+        st.markdown("Real-time occupancy tracking · Zone analytics · Event engine · Webhook integration")
 
 # Sidebar — Detection Settings
 st.sidebar.header("Detection Settings")
