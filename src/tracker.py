@@ -40,7 +40,12 @@ class PoultryTracker:
 
         
     def process_frame(self, frame, conf_threshold=0.15, classes=None):
-        # Run chicken tracking at imgsz=320 for speed
+        is_world_model = 'world' in str(getattr(self.model, 'model_name', '')).lower() or hasattr(self.model, 'set_classes')
+        
+        # For standard YOLO, only detect class 0 (person) and class 14 (bird) — nothing else!
+        if not is_world_model and classes is None:
+            classes = [0, 14]
+        
         results = self.model.track(frame, persist=True, classes=classes, conf=conf_threshold, tracker=self.tracker_type, verbose=False, iou=0.85, imgsz=320)
         
         detections = []
@@ -52,14 +57,33 @@ class PoultryTracker:
                 class_id = int(box.cls[0]) if box.cls is not None else 14
                 class_name = self.model.names[class_id]
                 track_id = int(box.id[0]) if box.id is not None else None
-                if track_id is not None:
-                    detections.append({
-                        "track_id": track_id,
-                        "class_id": class_id,
-                        "class_name": class_name,
-                        "box": (x1, y1, x2, y2),
-                        "conf": conf,
-                        "center": ((x1 + x2) // 2, (y1 + y2) // 2)
-                    })
+                if track_id is None:
+                    continue
+                
+                # --- Smart Human vs Chicken Classifier ---
+                # Use bounding box aspect ratio as a secondary signal.
+                # Humans are TALL and THIN (height >> width). Chickens are SHORT and WIDE.
+                h = max(1, y2 - y1)
+                w = max(1, x2 - x1)
+                aspect_ratio = h / w  # > 1.5 strongly indicates a standing human
+                
+                # If YOLO said "bird" but the box looks very tall and thin, it's almost certainly a human
+                if class_name in ("bird", "chicken", "poultry", "white broiler chicken", "white bird") and aspect_ratio > 1.6:
+                    class_id = 0
+                    class_name = "person"
+                
+                # If YOLO said "person" but the box is very wide/flat, it could be a chicken — keep as chicken
+                if class_id == 0 and aspect_ratio < 0.8:
+                    class_id = 14
+                    class_name = "bird"
+                
+                detections.append({
+                    "track_id": track_id,
+                    "class_id": class_id,
+                    "class_name": class_name,
+                    "box": (x1, y1, x2, y2),
+                    "conf": conf,
+                    "center": ((x1 + x2) // 2, (y1 + y2) // 2)
+                })
         
         return detections
