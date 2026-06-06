@@ -267,15 +267,14 @@ if st.session_state.processing and video_path is not None:
             st.session_state.processing = False
             
         fps = cap.get(cv2.CAP_PROP_FPS)
-        if fps <= 0: fps = 30
         fps = cap.get(cv2.CAP_PROP_FPS) or 30
-        target_fps = 15 # Lower target FPS to 15 to cut MJPEG and loop overhead in half
+        target_fps = 30 # Target a perfectly smooth 30 FPS video playback
         frame_delay = 1.0 / target_fps
         
         # Calculate how many frames to skip reading so the video still plays at normal speed
         video_frame_jump = max(1, int(fps / target_fps))
         
-        frame_skip = 10 # Run YOLO only 1.5 times a second to ensure 0 lag on weak servers
+        frame_skip = 10 # Run YOLO only 3 times a second to keep CPU load extremely low
         zone_detected_once = False # Only run zone_detector ONCE at startup, not every 90 frames
         frame_count = 0
         last_detections = []
@@ -367,19 +366,18 @@ if st.session_state.processing and video_path is not None:
                 # Use cached detections to keep the video looking smooth without running YOLO
                 detections = last_detections
                 
-            # Draw overlays every 2nd frame and push to the MJPEG stream server.
-            # The browser gets the video directly as a native MJPEG stream — zero Streamlit overhead!
-            if frame_count % 2 == 0:
-                frame_disp = visualizer.draw_zones(frame, zone_manager)
-                frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
-                
-                # Write frame to shared file for the Flask MJPEG stream server
-                _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
-                push_video_frame(buffer.tobytes())
-                
-                if mode != "video_only":
-                    # Update Heatmap only once every 3 seconds to save CPU and bandwidth
-                    if frame_count % (target_fps * 3) == 0:
+            # Draw overlays and push to the MJPEG stream server on EVERY frame.
+            # This guarantees perfectly smooth 30 FPS video playback even if the AI is skipping frames!
+            frame_disp = visualizer.draw_zones(frame, zone_manager)
+            frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
+            
+            # Write frame to shared file for the Flask MJPEG stream server
+            _, buffer = cv2.imencode('.jpg', frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+            push_video_frame(buffer.tobytes())
+            
+            if mode != "video_only":
+                # Update Heatmap only once every 3 seconds to save CPU and bandwidth
+                if frame_count % (target_fps * 3) == 0:
                         heatmap = visualizer.get_heatmap_overlay(frame_disp if 'frame_disp' in dir() else frame)
                         _, heatmap_buffer = cv2.imencode('.jpg', heatmap, [int(cv2.IMWRITE_JPEG_QUALITY), 40])
                         heatmap_placeholder.image(heatmap_buffer.tobytes(), use_container_width=True)
