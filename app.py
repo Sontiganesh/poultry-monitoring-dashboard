@@ -445,7 +445,7 @@ if st.session_state.processing and video_path is not None:
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
                         conf_val = float(box.conf[0])
                         cls_id = int(box.cls[0])
-                        cls_name = zone_detector.names[cls_id]
+                        cls_name = zone_detector.names.get(cls_id, f"object_{cls_id}")
                         if conf_val > 0.05:
                             world_dets.append({
                                 "class_name": cls_name,
