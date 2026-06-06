@@ -48,8 +48,8 @@ class PoultryAnalytics:
             self.history[track_id] = []
             self.stats[track_id] = {
                 "total_distance": 0.0,
-                "zone_visits": {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0},
-                "zone_times": {"Feed Zone": 0.0, "Water Zone": 0.0, "Rest Zone": 0.0},
+                "zone_visits": {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0, "Entry Zone": 0},
+                "zone_times": {"Feed Zone": 0.0, "Water Zone": 0.0, "Rest Zone": 0.0, "Entry Zone": 0.0},
                 "last_zone": None,
                 "active_time": 0.0,
                 "resting_time": 0.0,
@@ -77,9 +77,11 @@ class PoultryAnalytics:
             distance = np.sqrt((x - last_pt["x"])**2 + (y - last_pt["y"])**2)
             stats["total_distance"] += distance
             
-            # Update zone stats
+            # Update zone stats — use setdefault so any new zone never crashes
             if zone:
+                stats["zone_times"].setdefault(zone, 0.0)
                 stats["zone_times"][zone] += dt
+                stats["zone_visits"].setdefault(zone, 0)
                 if zone != stats["last_zone"]:
                     stats["zone_visits"][zone] += 1
             
@@ -168,14 +170,14 @@ class PoultryAnalytics:
                 
         # Update Timeline (every 1 second)
         if current_time - self.last_timeline_update >= 1.0:
-            zone_counts = {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0, None: 0}
+            zone_counts = {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0, "Entry Zone": 0, None: 0}
             active_scores = []
             
             for tid, history in self.history.items():
                 if history and (current_time - history[-1]["timestamp"] < 2.0):
                     z = history[-1]["zone"]
-                    if z in zone_counts:
-                        zone_counts[z] += 1
+                    zone_counts.setdefault(z, 0)
+                    zone_counts[z] += 1
                     active_scores.append(self.stats[tid]["activity_score"])
                     
             self.timeline["timestamps"].append(time.strftime("%H:%M:%S"))
@@ -215,12 +217,13 @@ class PoultryAnalytics:
         chicken_scores = [self.stats[tid]["activity_score"] for tid in active_track_ids if self._is_chicken(self.stats[tid].get("class_name", "bird"))]
         avg_score = int(np.mean(chicken_scores)) if chicken_scores else 0
         
-        # most visited zone (chickens only)
-        zone_counts = {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0}
+        # most visited zone (chickens only) — use setdefault to handle any zone
+        zone_counts = {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0, "Entry Zone": 0}
         for tid in active_track_ids:
             s = self.stats[tid]
             if self._is_chicken(s.get("class_name", "bird")):
                 for z, count in s["zone_visits"].items():
+                    zone_counts.setdefault(z, 0)
                     zone_counts[z] += count
         most_visited = max(zone_counts, key=zone_counts.get) if total_chickens > 0 and sum(zone_counts.values()) > 0 else "None"
         
