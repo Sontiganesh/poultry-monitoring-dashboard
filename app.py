@@ -34,7 +34,7 @@ def push_video_frame(jpeg_bytes: bytes):
         # This completely cures image tearing/flickering!
         with open(temp_path, "wb") as f:
             f.write(jpeg_bytes)
-        os.rename(temp_path, frame_path)
+        os.replace(temp_path, frame_path)
     except Exception:
         pass
 
@@ -244,8 +244,34 @@ else:
         
         report_placeholder = st.empty()
 
+
+import threading
+
+class AsyncTracker:
+    def __init__(self, base_tracker):
+        self.tracker = base_tracker
+        self.last_detections = []
+        self.raw_detections = []
+        self.lock = threading.Lock()
+        self.running = False
+        
+    def process_frame(self, frame, conf_threshold, classes):
+        if not self.running:
+            self.running = True
+            frame_copy = frame.copy()
+            def worker():
+                dets = self.tracker.process_frame(frame_copy, conf_threshold=conf_threshold, classes=classes)
+                with self.lock:
+                    self.raw_detections = dets
+                self.running = False
+            threading.Thread(target=worker, daemon=True).start()
+        
+        with self.lock:
+            return self.raw_detections
+
 if st.session_state.processing and video_path is not None:
-    tracker = load_tracker(selected_model_path, selected_tracker)
+    base_tracker = load_tracker(selected_model_path, selected_tracker)
+    tracker = AsyncTracker(base_tracker)
     zone_detector = load_zone_detector()
     visualizer = Visualizer()
     analytics = st.session_state.analytics
@@ -273,8 +299,6 @@ if st.session_state.processing and video_path is not None:
         
         # Calculate how many frames to skip reading so the video still plays at normal speed
         video_frame_jump = max(1, int(fps / target_fps))
-        
-        frame_skip = 10 # Run YOLO only 3 times a second to keep CPU load extremely low
         zone_detected_once = False # Only run zone_detector ONCE at startup, not every 90 frames
         frame_count = 0
         last_detections = []
