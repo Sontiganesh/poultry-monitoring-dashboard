@@ -367,7 +367,7 @@ if st.session_state.processing and video_path is not None:
         if ret:
             frame = cv2.resize(frame, (640, 360))
             h, w = frame.shape[:2]
-            zone_manager = ZoneManager(w, h)
+            zone_manager = ZoneManager(w, h, is_poultry=is_poultry)
         else:
             st.error("Failed to read video stream")
             st.session_state.processing = False
@@ -438,7 +438,7 @@ if st.session_state.processing and video_path is not None:
                         detections.append(d)
 
                 # Zone detector — run ONCE at startup only
-                if not zone_detected_once:
+                if is_poultry and not zone_detected_once:
                     world_results = zone_detector(frame, verbose=False)
                     world_dets = []
                     for box in world_results[0].boxes:

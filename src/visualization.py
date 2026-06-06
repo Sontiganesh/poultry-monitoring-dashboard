@@ -10,12 +10,16 @@ class Visualizer:
         # Draw dynamic zones as transparent overlays
         overlay = frame.copy()
         
+        is_poultry = getattr(zone_manager, "is_poultry", True)
+        feed_label = "Feed Zone" if is_poultry else "Service Zone"
+        water_label = "Water Zone" if is_poultry else "Seating Zone"
+        
         for pot in zone_manager.pots["feed"]:
             px, py = pot["center"]
             cv2.circle(overlay, (px, py), zone_manager.ZONE_RADIUS, (255, 0, 255), -1)
-            cv2.putText(overlay, "Feed Zone", (px - 40, py - zone_manager.ZONE_RADIUS - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2)
+            cv2.putText(overlay, feed_label, (px - 40, py - zone_manager.ZONE_RADIUS - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2)
             
-            if pot.get("box"):
+            if pot.get("box") is not None:
                 x1, y1, x2, y2 = pot["box"]
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
                 cv2.putText(frame, "Feeding Pot", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
@@ -23,9 +27,9 @@ class Visualizer:
         for pot in zone_manager.pots["water"]:
             px, py = pot["center"]
             cv2.circle(overlay, (px, py), zone_manager.ZONE_RADIUS, (255, 255, 0), -1)
-            cv2.putText(overlay, "Water Zone", (px - 40, py - zone_manager.ZONE_RADIUS - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+            cv2.putText(overlay, water_label, (px - 40, py - zone_manager.ZONE_RADIUS - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
             
-            if pot.get("box"):
+            if pot.get("box") is not None:
                 x1, y1, x2, y2 = pot["box"]
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
                 cv2.putText(frame, "Water Pot", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)

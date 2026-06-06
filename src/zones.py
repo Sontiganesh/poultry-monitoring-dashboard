@@ -2,17 +2,26 @@ import numpy as np
 
 
 class ZoneManager:
-    def __init__(self, frame_width, frame_height):
+    def __init__(self, frame_width, frame_height, is_poultry=True):
         self.width = frame_width
         self.height = frame_height
-        self.pots = {"feed": [], "water": []}
-        self.ZONE_RADIUS = 150  # pixels radius around a pot to count as a zone
+        self.is_poultry = is_poultry
+        self.ZONE_RADIUS = 150  # pixels radius around a pot/center to count as a zone
+
+        if self.is_poultry:
+            self.pots = {"feed": [], "water": []}
+        else:
+            # Set static coordinates for counter (Service) and table (Seating) zones in hotel/restaurant mode
+            self.pots = {
+                "feed": [{"center": (int(frame_width * 0.7), int(frame_height * 0.45)), "box": None}],
+                "water": [{"center": (int(frame_width * 0.25), int(frame_height * 0.5)), "box": None}]
+            }
 
         # Entry Zone: a configurable rectangular strip (default: bottom 15% of frame)
         self.entry_zone = self._default_entry_zone(frame_width, frame_height)
 
     def _default_entry_zone(self, w, h):
-        """Default entry zone is the bottom 15% of the frame — where workers typically walk in."""
+        """Default entry zone is the bottom 15% of the frame."""
         return {
             "x1": 0,
             "y1": int(h * 0.85),
@@ -25,6 +34,8 @@ class ZoneManager:
         self.entry_zone = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
 
     def update_pots(self, detections):
+        if not self.is_poultry:
+            return
         self.pots["feed"] = []
         self.pots["water"] = []
         for det in detections:
@@ -47,7 +58,7 @@ class ZoneManager:
         if self._in_entry_zone(x, y):
             return "Entry Zone"
 
-        # Find nearest feed pot
+        # Find nearest feed/counter zone center
         min_dist_feed = float("inf")
         for pot in self.pots["feed"]:
             px, py = pot["center"]
@@ -55,7 +66,7 @@ class ZoneManager:
             if dist < min_dist_feed:
                 min_dist_feed = dist
 
-        # Find nearest water pot
+        # Find nearest water/seating zone center
         min_dist_water = float("inf")
         for pot in self.pots["water"]:
             px, py = pot["center"]
@@ -64,22 +75,26 @@ class ZoneManager:
                 min_dist_water = dist
 
         if min_dist_feed < self.ZONE_RADIUS and min_dist_feed <= min_dist_water:
-            return "Feed Zone"
+            return "Feed Zone" if self.is_poultry else "Service Zone"
         if min_dist_water < self.ZONE_RADIUS:
-            return "Water Zone"
+            return "Water Zone" if self.is_poultry else "Seating Zone"
 
         # Default
-        return "Rest Zone"
+        return "Rest Zone" if self.is_poultry else "Lounge Zone"
 
     def get_zone_occupancy(self, detections: list) -> dict:
         """
         Calculate real-time zone occupancy from the latest frame's detections.
         Returns a dict: { zone_name: count }
         """
+        feed_key = "Feed Zone" if self.is_poultry else "Service Zone"
+        water_key = "Water Zone" if self.is_poultry else "Seating Zone"
+        rest_key = "Rest Zone" if self.is_poultry else "Lounge Zone"
+        
         occupancy = {
-            "Feed Zone": 0,
-            "Water Zone": 0,
-            "Rest Zone": 0,
+            feed_key: 0,
+            water_key: 0,
+            rest_key: 0,
             "Entry Zone": 0,
         }
         for det in detections:

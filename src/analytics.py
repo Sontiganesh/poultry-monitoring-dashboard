@@ -179,20 +179,23 @@ class PoultryAnalytics:
                 
         # Update Timeline (every 1 second)
         if current_time - self.last_timeline_update >= 1.0:
-            zone_counts = {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0, "Entry Zone": 0, None: 0}
+            zone_counts = {}
             active_scores = []
             
             for tid, history in self.history.items():
                 if history and (current_time - history[-1]["timestamp"] < 2.0):
                     z = history[-1]["zone"]
-                    zone_counts.setdefault(z, 0)
-                    zone_counts[z] += 1
+                    zone_counts[z] = zone_counts.get(z, 0) + 1
                     active_scores.append(self.stats[tid]["activity_score"])
                     
+            feed_key = "Feed Zone" if self.is_poultry else "Service Zone"
+            water_key = "Water Zone" if self.is_poultry else "Seating Zone"
+            rest_key = "Rest Zone" if self.is_poultry else "Lounge Zone"
+            
             self.timeline["timestamps"].append(time.strftime("%H:%M:%S"))
-            self.timeline["feed_zone"].append(zone_counts["Feed Zone"])
-            self.timeline["water_zone"].append(zone_counts["Water Zone"])
-            self.timeline["rest_zone"].append(zone_counts["Rest Zone"])
+            self.timeline["feed_zone"].append(zone_counts.get(feed_key, 0))
+            self.timeline["water_zone"].append(zone_counts.get(water_key, 0))
+            self.timeline["rest_zone"].append(zone_counts.get(rest_key, 0))
             self.timeline["avg_activity"].append(int(np.mean(active_scores)) if active_scores else 0)
             
             # Keep timeline to last 60 points (1 minute) for UI display
