@@ -268,15 +268,14 @@ if st.session_state.processing and video_path is not None:
             
         fps = cap.get(cv2.CAP_PROP_FPS)
         if fps <= 0: fps = 30
-        
-        # Target 10 FPS for rock-solid stability and zero browser-side React DOM lag
-        target_fps = 10
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30
+        target_fps = 15 # Lower target FPS to 15 to cut MJPEG and loop overhead in half
         frame_delay = 1.0 / target_fps
         
         # Calculate how many frames to skip reading so the video still plays at normal speed
         video_frame_jump = max(1, int(fps / target_fps))
         
-        frame_skip = 8 # Run YOLO only every 8th frame to maximally free up the CPU
+        frame_skip = 10 # Run YOLO only 1.5 times a second to ensure 0 lag on weak servers
         zone_detected_once = False # Only run zone_detector ONCE at startup, not every 90 frames
         frame_count = 0
         last_detections = []

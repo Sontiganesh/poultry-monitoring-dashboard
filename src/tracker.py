@@ -62,28 +62,4 @@ class PoultryTracker:
                         "center": ((x1 + x2) // 2, (y1 + y2) // 2)
                     })
         
-        # Run a SEPARATE dedicated human detection pass at higher resolution.
-        # Humans are tall/thin and get missed at imgsz=320. This uses a fixed person-class filter
-        # so it is cheap (no tracking overhead) and runs fast.
-        human_results = self.model(frame, classes=[0], conf=0.25, verbose=False, imgsz=640)
-        human_track_id_start = 9000  # Use high IDs so they never clash with chicken IDs
-        for i, box in enumerate(human_results[0].boxes if human_results[0].boxes else []):
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            conf = float(box.conf[0])
-            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-            # Check if this person is not already detected
-            already_detected = any(
-                abs(d["center"][0] - cx) < 30 and abs(d["center"][1] - cy) < 30
-                for d in detections
-            )
-            if not already_detected:
-                detections.append({
-                    "track_id": human_track_id_start + i,
-                    "class_id": 0,
-                    "class_name": "person",
-                    "box": (x1, y1, x2, y2),
-                    "conf": conf,
-                    "center": (cx, cy)
-                })
-        
         return detections
