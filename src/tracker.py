@@ -40,8 +40,8 @@ class PoultryTracker:
 
         
     def process_frame(self, frame, conf_threshold=0.15, classes=None):
-        # Run chicken tracking at imgsz=640 to ensure small/distant birds are detected
-        results = self.model.track(frame, persist=True, classes=classes, conf=conf_threshold, tracker=self.tracker_type, verbose=False, iou=0.85, imgsz=640)
+        # Run chicken tracking at imgsz=320 for speed
+        results = self.model.track(frame, persist=True, classes=classes, conf=conf_threshold, tracker=self.tracker_type, verbose=False, iou=0.85, imgsz=320)
         
         detections = []
         if len(results) > 0 and results[0].boxes is not None:

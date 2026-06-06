@@ -392,7 +392,7 @@ if st.session_state.processing and video_path is not None:
                         # Update metrics
                         m_total.metric("Total Chickens", stats["total_chickens"])
                         m_active.metric("Active (Moving)", stats["active"])
-                        m_humans.metric("Humans Detected", stats.get("total_humans", 0))
+                        m_humans.metric("Humans Detected", len([t for t in detections if t.get("class_name") in ["person", "human", "worker"]]))
                         m_score.metric("Avg Activity Score", f"{stats['avg_activity_score']}%")
                         
                         m_zone.metric("Most Visited Zone", stats["most_visited_zone"].replace(" Zone", ""))
