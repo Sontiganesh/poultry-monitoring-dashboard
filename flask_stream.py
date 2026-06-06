@@ -46,42 +46,45 @@ def add_cors_headers(response):
 # ---------------------------------------------------------------------------
 # MJPEG Stream
 # ---------------------------------------------------------------------------
-def _generate_mjpeg(frame_path: str, fps: int = 15):
-    """Generator that yields MJPEG frames from the shared disk file."""
-    delay = 1.0 / fps
-    while True:
-        try:
-            if os.path.exists(frame_path):
-                with open(frame_path, "rb") as f:
-                    frame = f.read()
-                if frame:
-                    yield (
-                        b"--frame\r\n"
-                        b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-                    )
-        except Exception:
-            pass
-        time.sleep(delay)
-
 
 @app.route("/video_feed/<session_id>")
 def video_feed(session_id: str):
     safe_session = "".join(c for c in session_id if c.isalnum() or c == "-")
-    frame_path = f"/tmp/poultry_frame_{safe_session}.jpg"
-    return Response(
-        _generate_mjpeg(frame_path, fps=15),
-        mimetype="multipart/x-mixed-replace; boundary=frame",
-    )
+    frame_path = f"/dev/shm/poultry_frame_{safe_session}.jpg"
+
+    def generate():
+        while True:
+            if os.path.exists(frame_path):
+                try:
+                    with open(frame_path, "rb") as f:
+                        jpeg_bytes = f.read()
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
+                except Exception:
+                    pass
+            time.sleep(0.066)  # ~15 FPS
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/heatmap_feed/<session_id>")
 def heatmap_feed(session_id: str):
     safe_session = "".join(c for c in session_id if c.isalnum() or c == "-")
-    frame_path = f"/tmp/poultry_heatmap_{safe_session}.jpg"
-    return Response(
-        _generate_mjpeg(frame_path, fps=5),
-        mimetype="multipart/x-mixed-replace; boundary=frame",
-    )
+    frame_path = f"/dev/shm/poultry_heatmap_{safe_session}.jpg"
+
+    def generate():
+        while True:
+            if os.path.exists(frame_path):
+                try:
+                    with open(frame_path, "rb") as f:
+                        jpeg_bytes = f.read()
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
+                except Exception:
+                    pass
+            time.sleep(0.2)  # ~5 FPS
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 # ---------------------------------------------------------------------------

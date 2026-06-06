@@ -32,8 +32,8 @@ SESSION_ID = st.session_state.session_id
 
 
 def push_video_frame(jpeg_bytes: bytes):
-    """Write the latest annotated frame to the shared file atomically."""
-    frame_path = f"/tmp/poultry_frame_{SESSION_ID}.jpg"
+    """Write the latest annotated frame to the shared RAM disk atomically."""
+    frame_path = f"/dev/shm/poultry_frame_{SESSION_ID}.jpg"
     temp_path = frame_path + ".tmp"
     try:
         with open(temp_path, "wb") as f:
@@ -44,8 +44,8 @@ def push_video_frame(jpeg_bytes: bytes):
 
 
 def push_heatmap_frame(jpeg_bytes: bytes):
-    """Write the latest heatmap frame to the shared file atomically."""
-    frame_path = f"/tmp/poultry_heatmap_{SESSION_ID}.jpg"
+    """Write the latest heatmap frame to the shared RAM disk atomically."""
+    frame_path = f"/dev/shm/poultry_heatmap_{SESSION_ID}.jpg"
     temp_path = frame_path + ".tmp"
     try:
         with open(temp_path, "wb") as f:
