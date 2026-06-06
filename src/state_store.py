@@ -10,6 +10,7 @@ import datetime
 import time
 import json
 import os
+import math
 
 _lock = threading.Lock()
 SHM_FILE = "/dev/shm/poultry_state.json"
@@ -52,12 +53,37 @@ _state = {
 }
 
 
+class _NumpyEncoder(json.JSONEncoder):
+    """Convert NumPy scalars / arrays to plain Python types so json.dump never fails."""
+    def default(self, obj):
+        try:
+            import numpy as np
+            if isinstance(obj, np.integer):
+                return int(obj)
+            if isinstance(obj, np.floating):
+                # Handle nan/inf which are also invalid JSON
+                if math.isnan(obj) or math.isinf(obj):
+                    return 0
+                return float(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+        except ImportError:
+            pass
+        # For anything else, fall back to string so we don't lose the write
+        return str(obj)
+
+
 def _save_data():
     try:
-        with open(SHM_FILE, "w", encoding="utf-8") as f:
-            json.dump(_state, f)
-    except Exception:
-        pass
+        tmp_path = SHM_FILE + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(_state, f, cls=_NumpyEncoder)
+        # Atomic rename so readers never see a half-written file
+        os.replace(tmp_path, SHM_FILE)
+    except Exception as e:
+        # Log to stderr so the error is visible in journalctl
+        import sys
+        print(f"[state_store] _save_data ERROR: {e}", file=sys.stderr, flush=True)
 
 
 def _load_data():

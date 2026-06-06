@@ -572,7 +572,10 @@ if st.session_state.processing and video_path is not None:
                 # --------------------------------------------------------
                 stats = analytics.get_summary_stats()
                 zone_occupancy = zone_manager.get_zone_occupancy(detections)
-                state_store.update_metrics(stats, zone_occupancy)
+                # Strip the 'timeline' key — it's large and only needed for UI charts,
+                # not for the REST API state file
+                api_stats = {k: v for k, v in stats.items() if k != "timeline"}
+                state_store.update_metrics(api_stats, zone_occupancy)
 
                 last_detections = detections
             else:
