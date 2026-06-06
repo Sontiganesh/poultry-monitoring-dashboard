@@ -118,8 +118,12 @@ if is_embedded and "auto_started" not in st.session_state:
 
 # Title
 if mode != "video_only":
-    st.title("🐔 AI Poultry Monitoring Platform")
-    st.markdown("Real-time tracking · Zone analytics · Event engine · Webhook integration")
+    if is_poultry:
+        st.title("🐔 AI Poultry Monitoring Platform")
+        st.markdown("Real-time tracking · Zone analytics · Event engine · Webhook integration")
+    else:
+        st.title("🏨 AI Smart Space Platform")
+        st.markdown("Real-time occupancy tracking · Zone analytics · Event engine · Webhook integration")
 
 # Sidebar — Video Input
 if not is_embedded:
@@ -139,6 +143,13 @@ if not is_embedded:
 else:
     video_path = auto_video_path
 
+# Determine if this is a poultry video or restaurant/hotel video
+is_poultry = True
+if video_path is not None:
+    video_name_lower = str(video_path).lower()
+    if any(term in video_name_lower for term in ["demo3", "demo4", "shed3", "shed4", "restaurant", "hotel", "people"]):
+        is_poultry = False
+
 # Sidebar — Detection Settings
 st.sidebar.header("Detection Settings")
 model_size = st.sidebar.selectbox(
@@ -150,9 +161,9 @@ model_size = st.sidebar.selectbox(
         "World Small (yolov8s-world.pt - Zero-Shot)",
         "World Medium (yolov8m-worldv2.pt - Zero-Shot)",
     ],
-    index=0,
+    index=1,
 )
-conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.10, 0.05)
+conf_threshold = st.sidebar.slider("Confidence Threshold", 0.05, 1.0, 0.15, 0.05)
 target_classes = None
 selected_tracker = "bytetrack"
 
@@ -313,14 +324,14 @@ class AsyncTracker:
         self.lock = threading.Lock()
         self.running = False
 
-    def process_frame(self, frame, conf_threshold, classes):
+    def process_frame(self, frame, conf_threshold, classes, is_poultry=True):
         if not self.running:
             self.running = True
             frame_copy = frame.copy()
 
             def worker():
                 dets = self.tracker.process_frame(
-                    frame_copy, conf_threshold=conf_threshold, classes=classes
+                    frame_copy, conf_threshold=conf_threshold, classes=classes, is_poultry=is_poultry
                 )
                 with self.lock:
                     self.raw_detections = dets
@@ -410,7 +421,7 @@ if st.session_state.processing and video_path is not None:
             # ----------------------------------------------------------------
             if frame_count % frame_skip == 0 or frame_count == 1:
                 raw_detections = tracker.process_frame(
-                    frame, conf_threshold=conf_threshold, classes=target_classes
+                    frame, conf_threshold=conf_threshold, classes=target_classes, is_poultry=is_poultry
                 )
 
                 # Filter ignored classes and pot overlaps
@@ -491,15 +502,13 @@ if st.session_state.processing and video_path is not None:
                 detections = last_detections
 
             # ----------------------------------------------------------------
-            # Video Rendering — only re-draw+encode when AI updated detections.
-            # The MJPEG stream server reads at 15fps anyway, so encoding more
-            # often just wastes CPU without any visual benefit.
+            # Video Rendering — Render and encode on EVERY frame at full 15 FPS
+            # using the latest detections. This provides smooth video playback.
             # ----------------------------------------------------------------
-            if frame_count % frame_skip == 0 or frame_count == 1:
-                frame_disp = visualizer.draw_zones(frame, zone_manager)
-                frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
-                _, buffer = cv2.imencode(".jpg", frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 55])
-                push_video_frame(buffer.tobytes())
+            frame_disp = visualizer.draw_zones(frame, zone_manager)
+            frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
+            _, buffer = cv2.imencode(".jpg", frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 55])
+            push_video_frame(buffer.tobytes())
 
             if mode != "video_only":
                 # Heatmap — every 5 seconds
@@ -512,13 +521,22 @@ if st.session_state.processing and video_path is not None:
                 if frame_count % target_fps == 0:
                     stats = analytics.get_summary_stats()
 
-                    m_total.metric("🐔 Total Chickens", stats["total_chickens"])
-                    m_active.metric("✅ Active", stats["active"])
-                    m_humans.metric("👤 Humans", stats.get("total_humans", 0))
-                    m_score.metric("⚡ Avg Activity", f"{stats['avg_activity_score']}%")
-                    m_zone.metric("📍 Top Zone", stats["most_visited_zone"].replace(" Zone", ""))
-                    m_alerts.metric("🚨 Alerts", stats["alert_count"])
-                    m_uniformity.metric("📐 Uniformity", stats["size_uniformity"])
+                    if is_poultry:
+                        m_total.metric("🐔 Total Chickens", stats["total_chickens"])
+                        m_active.metric("✅ Active", stats["active"])
+                        m_humans.metric("👤 Humans", stats.get("total_humans", 0))
+                        m_score.metric("⚡ Avg Activity", f"{stats['avg_activity_score']}%")
+                        m_zone.metric("📍 Top Zone", stats["most_visited_zone"].replace(" Zone", ""))
+                        m_alerts.metric("🚨 Alerts", stats["alert_count"])
+                        m_uniformity.metric("📐 Uniformity", stats["size_uniformity"])
+                    else:
+                        m_total.metric("👤 Total People", stats["total_humans"])
+                        m_active.metric("✅ Active People", stats["active_humans"])
+                        m_humans.metric("👤 Inactive People", stats["inactive_humans"])
+                        m_score.metric("⚡ Avg Activity", f"{stats['avg_human_activity_score']}%")
+                        m_zone.metric("📍 Top Zone", stats["most_visited_zone"].replace(" Zone", ""))
+                        m_alerts.metric("🚨 Alerts", stats["alert_count"])
+                        m_uniformity.metric("📐 Uniformity", "N/A")
 
                     # Zone occupancy chart
                     if stats["timeline"]["timestamps"]:

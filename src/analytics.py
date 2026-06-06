@@ -214,18 +214,25 @@ class PoultryAnalytics:
         active = sum(1 for tid in active_track_ids if not self.stats[tid]["is_inactive"] and self._is_chicken(self.stats[tid].get("class_name", "bird")))
         inactive = total_chickens - active
         
+        active_humans = sum(1 for tid in active_track_ids if not self.stats[tid]["is_inactive"] and self._is_human(self.stats[tid].get("class_name", "bird")))
+        inactive_humans = total_humans - active_humans
+        
         chicken_scores = [self.stats[tid]["activity_score"] for tid in active_track_ids if self._is_chicken(self.stats[tid].get("class_name", "bird"))]
         avg_score = int(np.mean(chicken_scores)) if chicken_scores else 0
         
-        # most visited zone (chickens only) — use setdefault to handle any zone
+        human_scores = [self.stats[tid]["activity_score"] for tid in active_track_ids if self._is_human(self.stats[tid].get("class_name", "bird"))]
+        avg_human_score = int(np.mean(human_scores)) if human_scores else 0
+        
+        # most visited zone (chickens only if poultry mode, otherwise humans)
         zone_counts = {"Feed Zone": 0, "Water Zone": 0, "Rest Zone": 0, "Entry Zone": 0}
         for tid in active_track_ids:
             s = self.stats[tid]
-            if self._is_chicken(s.get("class_name", "bird")):
+            is_target = self._is_chicken(s.get("class_name", "bird")) if total_chickens > 0 else self._is_human(s.get("class_name", "bird"))
+            if is_target:
                 for z, count in s["zone_visits"].items():
                     zone_counts.setdefault(z, 0)
                     zone_counts[z] += count
-        most_visited = max(zone_counts, key=zone_counts.get) if total_chickens > 0 and sum(zone_counts.values()) > 0 else "None"
+        most_visited = max(zone_counts, key=zone_counts.get) if (total_chickens + total_humans) > 0 and sum(zone_counts.values()) > 0 else "None"
         
         # Size Uniformity (chickens only)
         areas = [self.stats[tid].get("avg_box_area", 0) for tid in active_track_ids if self.stats[tid].get("avg_box_area", 0) > 0 and self._is_chicken(self.stats[tid].get("class_name", "bird"))]
@@ -243,7 +250,10 @@ class PoultryAnalytics:
             "total_humans": total_humans,
             "active": active,
             "inactive": inactive,
+            "active_humans": active_humans,
+            "inactive_humans": inactive_humans,
             "avg_activity_score": avg_score,
+            "avg_human_activity_score": avg_human_score,
             "most_visited_zone": most_visited,
             "alert_count": len(self.alerts),
             "size_uniformity": uniformity,

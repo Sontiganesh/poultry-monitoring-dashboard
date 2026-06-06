@@ -34,6 +34,14 @@ class PoultryTracker:
             print(f"Failed to generate custom tracker config, falling back to default: {e}")
             self.tracker_type = f"{tracker_algo}.yaml"
 
+        # Determine default imgsz based on model speed / complexity
+        if 'yolov8n' in model_path.lower():
+            self.default_imgsz = 416
+        elif 'yolov8s' in model_path.lower():
+            self.default_imgsz = 416
+        else:
+            self.default_imgsz = 320  # Keep 320 for medium and world models to prevent lag on weak CPU
+
         # Initialize model
         if self.is_world_model:
             self.model = YOLOWorld(model_path)
@@ -41,12 +49,15 @@ class PoultryTracker:
         else:
             self.model = YOLO(model_path)
 
-    def process_frame(self, frame, conf_threshold=0.15, classes=None):
-        # For standard YOLO, restrict to class 0 (person) and 14 (bird) only.
+    def process_frame(self, frame, conf_threshold=0.15, classes=None, is_poultry=True):
+        # For standard YOLO, restrict classes based on mode.
         # YOLOWorld uses text prompts so class filtering is not needed.
         effective_classes = classes
         if not self.is_world_model and effective_classes is None:
-            effective_classes = [0, 14]
+            if is_poultry:
+                effective_classes = None     # Do NOT filter classes, so misclassified chickens (sports ball, etc.) are kept
+            else:
+                effective_classes = [0]       # person only for restaurant/hotel settings
 
         results = self.model.track(
             frame,
@@ -55,8 +66,8 @@ class PoultryTracker:
             conf=conf_threshold,
             tracker=self.tracker_type,
             verbose=False,
-            iou=0.5,      # lower IoU so nearby chickens don't suppress each other
-            imgsz=320,
+            iou=0.5,      # lower IoU so nearby objects don't suppress each other
+            imgsz=self.default_imgsz,
         )
 
         detections = []
@@ -72,22 +83,26 @@ class PoultryTracker:
             if track_id is None:
                 continue
 
-            # --- Aspect Ratio Classifier ---
-            # Humans stand tall (h >> w). Chickens are short and wide.
             h = max(1, y2 - y1)
             w = max(1, x2 - x1)
             aspect_ratio = h / w
 
-            # Bird detected but shape is very tall/thin → reclassify as person
-            if class_name in ("bird", "chicken", "poultry", "white broiler chicken", "white bird"):
-                if aspect_ratio > 1.5:
-                    class_id = 0
-                    class_name = "person"
+            if is_poultry:
+                # --- Aspect Ratio Classifier ---
+                # Bird detected but shape is very tall/thin → reclassify as person
+                if class_name in ("bird", "chicken", "poultry", "white broiler chicken", "white bird"):
+                    if aspect_ratio > 1.8:  # Raised from 1.5 to prevent tall chickens being marked as human
+                        class_id = 0
+                        class_name = "person"
 
-            # Person detected but shape is very flat/wide → reclassify as bird
-            if class_id == 0 and aspect_ratio < 0.7:
-                class_id = 14
-                class_name = "bird"
+                # Person detected but shape is very flat/wide → reclassify as bird
+                if class_id == 0 and aspect_ratio < 0.7:
+                    class_id = 14
+                    class_name = "bird"
+            else:
+                # In hotel/restaurant, we only want humans, no bird conversions
+                if class_id != 0:
+                    continue
 
             detections.append({
                 "track_id": track_id,
