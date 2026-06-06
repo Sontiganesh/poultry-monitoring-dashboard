@@ -362,10 +362,10 @@ if st.session_state.processing and video_path is not None:
             st.session_state.processing = False
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30
-        target_fps = 30
+        target_fps = 15   # 15 FPS matches the MJPEG stream server read rate — no point encoding faster
         frame_delay = 1.0 / target_fps
         video_frame_jump = max(1, int(fps / target_fps))
-        frame_skip = 10  # Run YOLO every 10th frame; video pushed every frame
+        frame_skip = 5    # Run YOLO every 5th frame at 15fps = 3 AI inferences/second
         zone_detected_once = False
         frame_count = 0
         last_detections = []
@@ -491,13 +491,15 @@ if st.session_state.processing and video_path is not None:
                 detections = last_detections
 
             # ----------------------------------------------------------------
-            # Video Rendering — EVERY frame for smooth playback
+            # Video Rendering — only re-draw+encode when AI updated detections.
+            # The MJPEG stream server reads at 15fps anyway, so encoding more
+            # often just wastes CPU without any visual benefit.
             # ----------------------------------------------------------------
-            frame_disp = visualizer.draw_zones(frame, zone_manager)
-            frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
-
-            _, buffer = cv2.imencode(".jpg", frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
-            push_video_frame(buffer.tobytes())
+            if frame_count % frame_skip == 0 or frame_count == 1:
+                frame_disp = visualizer.draw_zones(frame, zone_manager)
+                frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
+                _, buffer = cv2.imencode(".jpg", frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 55])
+                push_video_frame(buffer.tobytes())
 
             if mode != "video_only":
                 # Heatmap — every 5 seconds
