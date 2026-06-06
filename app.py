@@ -299,6 +299,7 @@ if st.session_state.processing and video_path is not None:
         
         # Calculate how many frames to skip reading so the video still plays at normal speed
         video_frame_jump = max(1, int(fps / target_fps))
+        frame_skip = 10  # Run YOLO every 10th frame; video is pushed every frame for smoothness
         zone_detected_once = False # Only run zone_detector ONCE at startup, not every 90 frames
         frame_count = 0
         last_detections = []
