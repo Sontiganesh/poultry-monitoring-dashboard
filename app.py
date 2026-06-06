@@ -14,6 +14,9 @@ import uuid
 # all vCPUs (100%+) during OpenMP matrix multiplications.
 torch.set_num_threads(1)
 
+# Restrict OpenCV to a single thread to prevent thread thrashing with PyTorch
+cv2.setNumThreads(1)
+
 from src.tracker import PoultryTracker
 from src.analytics import PoultryAnalytics
 from src.zones import ZoneManager
@@ -449,7 +452,7 @@ if st.session_state.processing and video_path is not None:
         target_fps = 15   # 15 FPS matches the MJPEG stream server read rate — no point encoding faster
         frame_delay = 1.0 / target_fps
         video_frame_jump = max(1, int(fps / target_fps))
-        frame_skip = 5    # Run YOLO every 5th frame at 15fps = 3 AI inferences/second
+        frame_skip = 15   # Run YOLO every 15th frame at 15fps = 1 AI inference/second
         zone_detected_once = False
         frame_count = 0
         last_detections = []
