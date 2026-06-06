@@ -248,14 +248,26 @@ class PoultryAnalytics:
         
         # Size Uniformity (chickens only)
         areas = [self.stats[tid].get("avg_box_area", 0) for tid in active_track_ids if self.stats[tid].get("avg_box_area", 0) > 0 and self._is_chicken(self.stats[tid].get("class_name", "bird"))]
-        uniformity = "N/A"
         if len(areas) > 1:
             mean_area = np.mean(areas)
             std_area = np.std(areas)
-            cv = (std_area / mean_area) * 100 if mean_area > 0 else 0
-            if cv < 10: uniformity = "Excellent"
-            elif cv < 15: uniformity = "Good"
-            else: uniformity = "Poor (Check Feeding)"
+            cv = std_area / mean_area
+            if cv < 0.15: uniformity = "High"
+            elif cv < 0.30: uniformity = "Medium"
+            else: uniformity = "Low"
+        else:
+            uniformity = "N/A"
+            
+        # --- MEMORY LEAK FIX ---
+        # Garbage collect stale track IDs (not seen in 60 seconds) to prevent infinite RAM growth
+        # and Python GC thrashing which causes >130% CPU usage
+        stale_threshold = current_time - 60.0
+        stale_ids = [tid for tid, h in self.history.items() if not h or h[-1]["timestamp"] < stale_threshold]
+        for tid in stale_ids:
+            del self.history[tid]
+            del self.stats[tid]
+            if tid in self.timeline:
+                pass # timeline uses string keys not track ids
         
         return {
             "total_chickens": total_chickens,
