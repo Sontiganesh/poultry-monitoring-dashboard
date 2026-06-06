@@ -612,8 +612,8 @@ if st.session_state.processing and video_path is not None:
                         m_alerts.metric("🚨 Alerts", stats["alert_count"])
                         m_uniformity.metric("📐 Uniformity", "N/A")
 
-                    # Zone occupancy chart
-                    if stats["timeline"]["timestamps"]:
+                    # Update heavy UI charts every 5 seconds to prevent browser freeze/lag
+                    if frame_count % (target_fps * 5) == 0 and stats["timeline"]["timestamps"]:
                         zone_df = pd.DataFrame(
                             {
                                 "Feed": stats["timeline"]["feed_zone"],
