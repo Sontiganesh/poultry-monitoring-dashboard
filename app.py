@@ -17,6 +17,7 @@ from src.analytics import PoultryAnalytics
 from src.zones import ZoneManager
 from src.visualization import Visualizer
 from src.reporting import ReportGenerator
+from src.webhook import WebhookDispatcher
 import uuid
 
 # Create a unique session ID for this browser tab so multiple users don't overwrite each other's frames!
@@ -148,6 +149,11 @@ for line in tag_input.split('\n'):
     if ':' in line:
         k, v = line.split(':', 1)
         custom_tags[k.strip()] = v.strip()
+
+st.sidebar.header("Integrations")
+webhook_url = st.sidebar.text_input("Webhook URL", os.environ.get("WEBHOOK_URL", ""), placeholder="https://your-webhook-endpoint.com")
+if 'webhook_dispatcher' not in st.session_state:
+    st.session_state.webhook_dispatcher = WebhookDispatcher()
 
 if not is_embedded:
     start_button = st.sidebar.button("Start Processing")
@@ -413,6 +419,23 @@ if st.session_state.processing and video_path is not None:
                         if analytics.alerts:
                             alert_html = "".join([f"<p style='color:red;'>⚠️ {a}</p>" for a in analytics.alerts[-5:]])
                             alert_box.markdown(alert_html, unsafe_allow_html=True)
+                            
+                    # 4. Dispatch Webhook payload every 30 seconds (30 * target_fps frames)
+                    if webhook_url and frame_count % (target_fps * 30) == 0:
+                        stats = analytics.get_summary_stats()
+                        payload = {
+                            "total_chickens": stats["total_chickens"],
+                            "humans_detected": len([t for t in detections if t.get("class_name") in ["person", "human", "worker"]]),
+                            "active_chickens": stats["active"],
+                            "avg_activity_score": stats["avg_activity_score"],
+                            "zone_occupancy": {
+                                "Feed Zone": stats["timeline"]["feed_zone"][-1] if stats["timeline"]["feed_zone"] else 0,
+                                "Water Zone": stats["timeline"]["water_zone"][-1] if stats["timeline"]["water_zone"] else 0,
+                                "Rest Zone": stats["timeline"]["rest_zone"][-1] if stats["timeline"]["rest_zone"] else 0
+                            },
+                            "active_alerts": analytics.alerts[-5:] if analytics.alerts else []
+                        }
+                        st.session_state.webhook_dispatcher.dispatch(webhook_url, payload)
 
             elapsed = time.time() - loop_start
             
