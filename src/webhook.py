@@ -77,7 +77,9 @@ class WebhookDispatcher:
         """
         Fire payload to webhook URL.
         """
+        print(f"[WEBHOOK DEBUG] dispatch() called for URL: {url}")
         if not url or not url.startswith("http"):
+            print(f"[WEBHOOK DEBUG] dispatch failed: invalid URL: {url}")
             return False, None, "Invalid URL"
 
         if "timestamp" not in payload:
@@ -90,6 +92,7 @@ class WebhookDispatcher:
         if sync:
             return self._send_payload(url, payload)
         else:
+            print(f"[WEBHOOK DEBUG] Spawning background thread for dispatch...")
             thread = threading.Thread(
                 target=self._send_payload,
                 args=(url, payload),
@@ -106,11 +109,13 @@ class WebhookDispatcher:
         status_code = None
         response_text = ""
 
+        print(f"[WEBHOOK DEBUG] sending payload to: {url} | total_count: {payload.get('total_count')}")
         headers = {"Content-Type": "application/json"}
         data = json.dumps(payload, default=str).encode("utf-8")
 
         for attempt in range(max_retries):
             try:
+                print(f"[WEBHOOK DEBUG] Attempt {attempt+1}/{max_retries}...")
                 if _HAS_REQUESTS:
                     resp = requests.post(url, json=payload, headers=headers, timeout=self.timeout)
                     status_code = resp.status_code
@@ -128,10 +133,12 @@ class WebhookDispatcher:
                     self.total_success += 1
                     self._log_delivery(url, payload, status_code, "Success", response_text)
                     success = True
+                    print(f"[WEBHOOK DEBUG] Dispatch success! Status code: {status_code}")
                     break
                 else:
                     self._log_delivery(url, payload, status_code, f"HTTP Error {status_code}", response_text)
                     last_error = f"HTTP Error {status_code}"
+                    print(f"[WEBHOOK DEBUG] HTTP error: {status_code} | response: {response_text[:100]}")
 
             except Exception as e:
                 status_code = None
@@ -140,6 +147,7 @@ class WebhookDispatcher:
                 self.last_response_body = response_text
                 self._log_delivery(url, payload, None, f"Connection Failed: {e}", response_text)
                 last_error = f"Connection Failed: {e}"
+                print(f"[WEBHOOK DEBUG] Connection error: {e}")
 
             if attempt < max_retries - 1:
                 time.sleep(backoff)
@@ -147,6 +155,7 @@ class WebhookDispatcher:
 
         if not success:
             self.total_failed += 1
+            print(f"[WEBHOOK DEBUG] Dispatch failed after {max_retries} attempts. Last error: {last_error}")
             return False, status_code, last_error
 
         return True, status_code, "Success"
