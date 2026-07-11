@@ -50,6 +50,7 @@ class WebhookDispatcher:
             "rest_zone_count": zone_occupancy.get(rest_key, 0),
             "activity_score": analytics_stats.get("avg_activity_score", 0) if is_poultry else analytics_stats.get("avg_human_activity_score", 0),
             "alerts": recent_alerts,
+            "events": events_since_last_ping if events_since_last_ping is not None else [],
         }
         return payload
 
