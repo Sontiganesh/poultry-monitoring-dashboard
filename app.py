@@ -466,6 +466,7 @@ if st.session_state.processing and video_path is not None:
             st.session_state.processing = False
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1000
         target_fps = 15   # 15 FPS matches the MJPEG stream server read rate — no point encoding faster
         frame_delay = 1.0 / target_fps
         video_frame_jump = max(1, int(fps / target_fps))
@@ -496,18 +497,35 @@ if st.session_state.processing and video_path is not None:
         )
         st.sidebar.markdown(f"**Video Only:** `{video_only_url}`")
 
+        video_start_time = time.time()
         while cap.isOpened() and st.session_state.processing:
             loop_start = time.time()
 
-            # Skip frames efficiently without decoding
-            for _ in range(video_frame_jump - 1):
-                if not cap.grab():
-                    break
-
-            ret, frame = cap.read()
-            if not ret:
-                # Loop video endlessly
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            # Dynamic frame dropping to maintain normal 1x playback speed
+            elapsed_real_time = time.time() - video_start_time
+            target_frame_index = int(elapsed_real_time * fps)
+            
+            if target_frame_index >= total_frames:
+                video_start_time = time.time()
+                target_frame_index = 0
+                
+            current_frame_index = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+            
+            ret = False
+            frame = None
+            if target_frame_index > current_frame_index:
+                diff = target_frame_index - current_frame_index
+                if diff < 10:
+                    for _ in range(diff - 1):
+                        cap.grab()
+                    ret, frame = cap.read()
+                else:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame_index)
+                    ret, frame = cap.read()
+            elif target_frame_index < current_frame_index:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame_index)
+                ret, frame = cap.read()
+            else:
                 ret, frame = cap.read()
 
             if not ret or frame is None:
