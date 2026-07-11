@@ -281,12 +281,15 @@ else:
     st.sidebar.info("Configure a valid Webhook URL to monitor delivery.")
 
 # Sidebar — API Info
-from streamlit.web.server.websocket_headers import _get_websocket_headers
-headers = _get_websocket_headers()
-host_header = headers.get("Host", "") if headers else ""
-if host_header:
-    SERVER_IP = host_header.split(":")[0]
-else:
+try:
+    from streamlit.web.server.websocket_headers import _get_websocket_headers
+    headers = _get_websocket_headers()
+    host_header = headers.get("Host", "") if headers else ""
+    if host_header:
+        SERVER_IP = host_header.split(":")[0]
+    else:
+        SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
+except Exception:
     SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
 st.sidebar.header("REST API Endpoints")
 st.sidebar.markdown(f"""
@@ -349,6 +352,7 @@ if mode == "video_only":
         f'<div style="width:100vw;height:100vh;display:flex;justify-content:center;'
         f'align-items:center;background:#0E1117;">'
         f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" '
+        f'onerror="this.onerror=null; this.src=\'http://\' + window.location.hostname + \':8502/video_feed/{SESSION_ID}\';" '
         f'style="max-width:100%;max-height:100%;object-fit:contain;"></div>',
         unsafe_allow_html=True,
     )
@@ -360,6 +364,7 @@ else:
             video_placeholder = st.empty()
             video_placeholder.markdown(
                 f'<img src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" '
+                f'onerror="this.onerror=null; this.src=\'http://\' + window.location.hostname + \':8502/video_feed/{SESSION_ID}\';" '
                 f'style="width:100%;border-radius:8px;">',
                 unsafe_allow_html=True,
             )
@@ -367,6 +372,7 @@ else:
             heatmap_placeholder = st.empty()
             heatmap_placeholder.markdown(
                 f'<img src="http://{SERVER_IP}:8502/heatmap_feed/{SESSION_ID}" '
+                f'onerror="this.onerror=null; this.src=\'http://\' + window.location.hostname + \':8502/heatmap_feed/{SESSION_ID}\';" '
                 f'style="width:100%;border-radius:8px;">',
                 unsafe_allow_html=True,
             )
