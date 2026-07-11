@@ -70,6 +70,8 @@ query_params = st.query_params
 mode = query_params.get("mode")
 demo_video = query_params.get("video")
 demo_shed = query_params.get("shed")
+url_webhook = query_params.get("webhook", "")
+url_camera = query_params.get("camera", "")
 
 # ---------------------------------------------------------------------------
 # Embed Mode CSS
@@ -122,9 +124,12 @@ if is_embedded and "auto_started" not in st.session_state:
 # Sidebar — Video Input
 if not is_embedded:
     st.sidebar.header("Video Input")
-    input_source = st.sidebar.radio("Select Source", ["Upload Video", "Webcam", "RTSP Stream"])
+    input_source = st.sidebar.radio("Select Source", ["Demo Videos", "Upload Video", "Webcam", "RTSP Stream"], index=0)
     video_path = None
-    if input_source == "Upload Video":
+    if input_source == "Demo Videos":
+        demo_choice = st.sidebar.selectbox("Select Demo Video", ["demo1", "demo2", "demo3", "demo4"], index=0)
+        video_path = os.path.join(BASE_DIR, "videos", f"{demo_choice}.mp4")
+    elif input_source == "Upload Video":
         uploaded_file = st.sidebar.file_uploader("Upload MP4", type=["mp4", "avi"])
         if uploaded_file is not None:
             tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
@@ -201,10 +206,10 @@ def is_valid_url(url: str) -> bool:
 # Sidebar — Integrations
 st.sidebar.header("Integrations")
 
-camera_id = st.sidebar.text_input("Camera ID", os.environ.get("CAMERA_ID", "CAM_01"))
+camera_id = st.sidebar.text_input("Camera ID", url_camera or os.environ.get("CAMERA_ID", "CAM_01"))
 webhook_url = st.sidebar.text_input(
     "Webhook URL",
-    os.environ.get("WEBHOOK_URL", ""),
+    url_webhook or os.environ.get("WEBHOOK_URL", ""),
     placeholder="https://your-webhook-endpoint.com",
 )
 
@@ -276,7 +281,13 @@ else:
     st.sidebar.info("Configure a valid Webhook URL to monitor delivery.")
 
 # Sidebar — API Info
-SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
+from streamlit.web.server.websocket_headers import _get_websocket_headers
+headers = _get_websocket_headers()
+host_header = headers.get("Host", "") if headers else ""
+if host_header:
+    SERVER_IP = host_header.split(":")[0]
+else:
+    SERVER_IP = os.environ.get("STREAM_HOST", "4.145.80.121")
 st.sidebar.header("REST API Endpoints")
 st.sidebar.markdown(f"""
 | Endpoint | URL |
@@ -291,7 +302,7 @@ st.sidebar.markdown(f"""
 if not is_embedded:
     start_button = st.sidebar.button("▶ Start Processing")
     if "processing" not in st.session_state:
-        st.session_state.processing = False
+        st.session_state.processing = True
     if start_button:
         st.session_state.processing = True
     stop_button = st.sidebar.button("⏹ Stop")
