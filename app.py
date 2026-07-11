@@ -441,7 +441,7 @@ class AsyncTracker:
 # ---------------------------------------------------------------------------
 if st.session_state.processing and video_path is not None:
     base_tracker = load_tracker(selected_model_path, selected_tracker)
-    tracker = AsyncTracker(base_tracker)
+    tracker = base_tracker
     zone_detector = load_zone_detector()
     visualizer = Visualizer()
     analytics = st.session_state.analytics
@@ -469,7 +469,7 @@ if st.session_state.processing and video_path is not None:
         target_fps = 15   # 15 FPS matches the MJPEG stream server read rate — no point encoding faster
         frame_delay = 1.0 / target_fps
         video_frame_jump = max(1, int(fps / target_fps))
-        frame_skip = 15   # Run YOLO every 15th frame at 15fps = 1 AI inference/second
+        frame_skip = 1    # Run YOLO on every frame for zero delay
         zone_detected_once = False
         frame_count = 0
         last_detections = []
