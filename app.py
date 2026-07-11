@@ -498,6 +498,7 @@ if st.session_state.processing and video_path is not None:
         st.sidebar.markdown(f"**Video Only:** `{video_only_url}`")
 
         video_start_time = time.time()
+        last_webhook_time = time.time()
         while cap.isOpened() and st.session_state.processing:
             loop_start = time.time()
 
@@ -697,9 +698,10 @@ if st.session_state.processing and video_path is not None:
                         event_box.markdown(evt_html, unsafe_allow_html=True)
 
                 # --------------------------------------------------------
-                # Webhook — every 30 seconds
+                # Webhook — every 30 seconds (real-world time)
                 # --------------------------------------------------------
-                if webhook_url and is_url_valid and frame_count % (target_fps * 30) == 0:
+                current_time = time.time()
+                if webhook_url and is_url_valid and (current_time - last_webhook_time >= 30.0):
                     stats = analytics.get_summary_stats()
                     zone_occ = zone_manager.get_zone_occupancy(last_detections)
                     events_since = state_store.flush_events_since_ping()
@@ -713,6 +715,7 @@ if st.session_state.processing and video_path is not None:
                         is_poultry=is_poultry,
                     )
                     st.session_state.webhook_dispatcher.dispatch(webhook_url, payload)
+                    last_webhook_time = current_time
 
             # Frame rate limiter
             elapsed = time.time() - loop_start
