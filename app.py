@@ -697,25 +697,28 @@ if st.session_state.processing and video_path is not None:
                         )
                         event_box.markdown(evt_html, unsafe_allow_html=True)
 
-                # --------------------------------------------------------
-                # Webhook — every 30 seconds (real-world time)
-                # --------------------------------------------------------
-                current_time = time.time()
-                if webhook_url and is_url_valid and (current_time - last_webhook_time >= 30.0):
-                    stats = analytics.get_summary_stats()
-                    zone_occ = zone_manager.get_zone_occupancy(last_detections)
-                    events_since = state_store.flush_events_since_ping()
-                    alerts_list = state_store.get_alerts(limit=10)
+            # --------------------------------------------------------
+            # Webhook — every 30 seconds (real-world time)
+            # Runs in ALL modes including video_only
+            # --------------------------------------------------------
+            current_time = time.time()
+            if webhook_url and is_url_valid and (current_time - last_webhook_time >= 30.0):
+                print(f"[WEBHOOK] Firing webhook at frame {frame_count}, elapsed={current_time - last_webhook_time:.1f}s")
+                stats = analytics.get_summary_stats()
+                zone_occ = zone_manager.get_zone_occupancy(last_detections)
+                events_since = state_store.flush_events_since_ping()
+                alerts_list = state_store.get_alerts(limit=10)
 
-                    payload = st.session_state.webhook_dispatcher.build_payload(
-                        analytics_stats=stats,
-                        zone_occupancy=zone_occ,
-                        events_since_last_ping=events_since,
-                        alerts=alerts_list,
-                        is_poultry=is_poultry,
-                    )
-                    st.session_state.webhook_dispatcher.dispatch(webhook_url, payload)
-                    last_webhook_time = current_time
+                payload = st.session_state.webhook_dispatcher.build_payload(
+                    analytics_stats=stats,
+                    zone_occupancy=zone_occ,
+                    events_since_last_ping=events_since,
+                    alerts=alerts_list,
+                    is_poultry=is_poultry,
+                )
+                success, status_code, desc = st.session_state.webhook_dispatcher.dispatch(webhook_url, payload)
+                print(f"[WEBHOOK] Result: success={success}, status={status_code}, desc={desc}")
+                last_webhook_time = current_time
 
             # Frame rate limiter
             elapsed = time.time() - loop_start
