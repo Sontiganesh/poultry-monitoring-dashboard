@@ -498,7 +498,7 @@ if st.session_state.processing and video_path is not None:
         st.sidebar.markdown(f"**Video Only:** `{video_only_url}`")
 
         video_start_time = time.time()
-        last_webhook_time = time.time()
+        last_webhook_time = time.time() - 30.0  # Force immediate first dispatch
         while cap.isOpened() and st.session_state.processing:
             loop_start = time.time()
 

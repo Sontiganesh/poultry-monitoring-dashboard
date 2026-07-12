@@ -54,9 +54,7 @@ class PoultryTracker:
         # YOLOWorld uses text prompts so class filtering is not needed.
         effective_classes = classes
         if not self.is_world_model and effective_classes is None:
-            if is_poultry:
-                effective_classes = None     # Do NOT filter classes, so misclassified chickens (sports ball, etc.) are kept
-            else:
+            if not is_poultry:
                 effective_classes = [0]       # person only for restaurant/hotel settings
 
         results = self.model.track(
