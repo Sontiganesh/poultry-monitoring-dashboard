@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import cv2
 import tempfile
 import os
@@ -347,14 +348,35 @@ if "event_engine" not in st.session_state:
 # ---------------------------------------------------------------------------
 if mode == "video_only":
     # Pure embed — just the video, nothing else
-    video_placeholder = st.empty()
-    video_placeholder.markdown(
-        f'<div style="width:100vw;height:100vh;display:flex;justify-content:center;'
-        f'align-items:center;background:#0E1117;">'
-        f'<img id="video_only_feed" src="http://{SERVER_IP}:8502/video_feed/{SESSION_ID}" '
-        f'style="max-width:100%;max-height:100%;object-fit:contain;">'
-        f'<script>document.getElementById("video_only_feed").src = "http://" + window.location.hostname + ":8502/video_feed/{SESSION_ID}";</script></div>',
-        unsafe_allow_html=True,
+    # Use components.html so JavaScript executes (st.markdown strips <script> tags)
+    components.html(
+        f"""<!DOCTYPE html>
+<html>
+<head>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#0E1117; display:flex; justify-content:center; align-items:center;
+        width:100vw; height:100vh; overflow:hidden; }}
+img {{ max-width:100%; max-height:100%; object-fit:contain; }}
+</style>
+</head>
+<body>
+<img id="feed" src="" style="max-width:100%;max-height:100%;object-fit:contain;">
+<script>
+(function() {{
+  try {{
+    var host = window.parent.location.hostname;
+  }} catch(e) {{
+    var host = window.location.hostname;
+  }}
+  document.getElementById("feed").src =
+    "http://" + host + ":8502/video_feed/{SESSION_ID}";
+}})();
+</script>
+</body>
+</html>""",
+        height=720,
+        scrolling=False,
     )
 else:
     col1, col2 = st.columns([2, 1])
