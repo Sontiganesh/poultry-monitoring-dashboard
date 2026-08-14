@@ -94,11 +94,11 @@ if mode == "video_only":
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ background:#0E1117; display:flex; justify-content:center; align-items:center;
         width:100vw; height:100vh; overflow:hidden; }}
-img {{ max-width:100%; max-height:100%; object-fit:contain; }}
+canvas {{ max-width:100%; max-height:100%; object-fit:contain; }}
 </style>
 </head>
 <body>
-<img id="feed" src="" style="max-width:100%;max-height:100%;object-fit:contain;">
+<canvas id="c" width="640" height="360"></canvas>
 <script>
 (function() {{
   try {{
@@ -106,8 +106,24 @@ img {{ max-width:100%; max-height:100%; object-fit:contain; }}
   }} catch(e) {{
     var host = window.location.hostname;
   }}
-  document.getElementById("feed").src =
-    "http://" + host + ":8502/demo_feed/{current_demo}";
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var img = new Image();
+  var demo = "{current_demo}";
+  
+  img.onload = function() {{
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    setTimeout(fetchFrame, 30);
+  }};
+  img.onerror = function() {{
+    setTimeout(fetchFrame, 100);
+  }};
+  
+  function fetchFrame() {{
+    img.src = "http://" + host + ":8502/api/latest_frame/" + demo + "?t=" + Date.now();
+  }}
+  
+  fetchFrame();
 }})();
 </script>
 </body>

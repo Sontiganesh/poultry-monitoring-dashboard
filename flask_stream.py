@@ -297,7 +297,12 @@ def demo_feed(demo_name: str):
                        b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
                 time.sleep(0.05)
 
-    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    res = Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, pre-check=0, post-check=0"
+    res.headers["Pragma"] = "no-cache"
+    res.headers["Expires"] = "0"
+    res.headers["X-Content-Type-Options"] = "nosniff"
+    return res
 
 
 @app.route("/video_feed/<session_id>")
@@ -323,9 +328,26 @@ def video_feed(session_id: str):
                        b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
                 time.sleep(0.05)
 
-    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    res = Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, pre-check=0, post-check=0"
+    res.headers["Pragma"] = "no-cache"
+    res.headers["Expires"] = "0"
+    res.headers["X-Content-Type-Options"] = "nosniff"
+    return res
 
-    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+@app.route("/api/latest_frame/<demo_name>")
+def api_latest_frame(demo_name: str):
+    """Zero-latency single frame endpoint for HTML5 Canvas GPU rendering."""
+    with CACHE_LOCK:
+        LAST_VIEWED[demo_name] = time.time()
+        frame_bytes = FRAME_CACHE.get(demo_name) or _BLACK_FRAME
+
+    res = Response(frame_bytes, mimetype="image/jpeg")
+    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    res.headers["Pragma"] = "no-cache"
+    res.headers["Expires"] = "0"
+    return res
 
 
 @app.route("/heatmap_feed/<session_id>")
