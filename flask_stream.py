@@ -136,7 +136,7 @@ def demo_feed(demo_name: str):
                 # Worker not started yet — send black placeholder
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
-            time.sleep(0.125)  # ~8 FPS read rate
+            time.sleep(0.066)  # ~15 FPS smooth read rate
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 

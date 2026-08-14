@@ -348,7 +348,8 @@ if "event_engine" not in st.session_state:
 # ---------------------------------------------------------------------------
 if mode == "video_only":
     # Pure embed — just the video, nothing else
-    # Use components.html so JavaScript executes (st.markdown strips <script> tags)
+    current_demo = demo_video if demo_video in ["demo1", "demo2", "demo3", "demo4"] else "demo1"
+    stream_path = f"demo_feed/{current_demo}" if is_embedded else f"video_feed/{SESSION_ID}"
     components.html(
         f"""<!DOCTYPE html>
 <html>
@@ -370,7 +371,7 @@ img {{ max-width:100%; max-height:100%; object-fit:contain; }}
     var host = window.location.hostname;
   }}
   document.getElementById("feed").src =
-    "http://" + host + ":8502/video_feed/{SESSION_ID}";
+    "http://" + host + ":8502/{stream_path}";
 }})();
 </script>
 </body>
