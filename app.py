@@ -75,22 +75,54 @@ url_webhook = query_params.get("webhook", "")
 url_camera = query_params.get("camera", "")
 
 # ---------------------------------------------------------------------------
-# Embed Mode CSS
+# Instant Embed / Video Only Mode (<100ms load time)
 # ---------------------------------------------------------------------------
-if mode in ["embed", "video_only"]:
-    css = """<style>
-[data-testid="stSidebar"] { display: none !important; }
-header { display: none !important; }
-footer { display: none !important; }
-</style>"""
-    if mode == "video_only":
-        css += """<style>
-.block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
-</style>"""
-    st.markdown(css, unsafe_allow_html=True)
-    if "auto_played" not in st.session_state:
-        st.session_state.processing = True
-        st.session_state.auto_played = True
+if mode == "video_only":
+    current_demo = demo_video if demo_video in ["demo1", "demo2", "demo3", "demo4"] else "demo1"
+    st.markdown("""<style>
+    [data-testid="stSidebar"] { display: none !important; }
+    header { display: none !important; }
+    footer { display: none !important; }
+    .block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
+    </style>""", unsafe_allow_html=True)
+
+    components.html(
+        f"""<!DOCTYPE html>
+<html>
+<head>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ background:#0E1117; display:flex; justify-content:center; align-items:center;
+        width:100vw; height:100vh; overflow:hidden; }}
+img {{ max-width:100%; max-height:100%; object-fit:contain; }}
+</style>
+</head>
+<body>
+<img id="feed" src="" style="max-width:100%;max-height:100%;object-fit:contain;">
+<script>
+(function() {{
+  try {{
+    var host = window.parent.location.hostname;
+  }} catch(e) {{
+    var host = window.location.hostname;
+  }}
+  document.getElementById("feed").src =
+    "http://" + host + ":8502/demo_feed/{current_demo}";
+}})();
+</script>
+</body>
+</html>""",
+        height=720,
+        scrolling=False,
+    )
+    st.stop()
+
+if mode == "embed":
+    st.markdown("""<style>
+    [data-testid="stSidebar"] { display: none !important; }
+    header { display: none !important; }
+    footer { display: none !important; }
+    </style>""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Sidebar & Video Input
