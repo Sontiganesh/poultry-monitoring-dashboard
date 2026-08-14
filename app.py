@@ -119,7 +119,7 @@ elif demo_shed:
     auto_video_path = os.path.join(BASE_DIR, "videos", f"shed{demo_shed}.mp4")
 
 if is_embedded and "auto_started" not in st.session_state:
-    st.session_state.processing = True
+    st.session_state.processing = False
     st.session_state.auto_started = True
 
 # Sidebar — Video Input
@@ -462,7 +462,7 @@ class AsyncTracker:
 # ---------------------------------------------------------------------------
 # Main Processing Loop
 # ---------------------------------------------------------------------------
-if st.session_state.processing and video_path is not None:
+if not is_embedded and st.session_state.processing and video_path is not None:
     base_tracker = load_tracker(selected_model_path, selected_tracker)
     tracker = base_tracker
     zone_detector = load_zone_detector()

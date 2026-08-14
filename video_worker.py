@@ -79,14 +79,17 @@ class LiveStreamWorker:
             analytics.is_poultry = self.is_poultry
             event_engine = EventEngine()
 
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            frame_count = 0
             current_dets = []
-
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
-                    break  # End of video -> restart loop cleanly
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    # Reset tracker state on seamless rewind so tracks don't jump across loop boundary
+                    tracker = PoultryTracker(model_path="yolov8n.pt", tracker_algo="bytetrack")
+                    frame_count = 0
 
                 frame = cv2.resize(frame, RESOLUTION)
                 frame_count += 1
