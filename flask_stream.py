@@ -279,23 +279,23 @@ def demo_feed(demo_name: str):
         return "Not found", 404
 
     def generate():
-        last_bytes = None
+        last_sent_bytes = None
         while True:
-            # Mark stream active
             with CACHE_LOCK:
                 LAST_VIEWED[demo_name] = time.time()
                 frame_data = FRAME_CACHE.get(demo_name)
 
-            if frame_data:
-                last_bytes = frame_data
-
-            if last_bytes:
+            if frame_data and frame_data is not last_sent_bytes:
+                last_sent_bytes = frame_data
                 yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + last_bytes + b"\r\n")
+                       b"Content-Type: image/jpeg\r\n\r\n" + frame_data + b"\r\n")
+                time.sleep(0.015)
+            elif last_sent_bytes:
+                time.sleep(0.01)
             else:
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
-            time.sleep(0.033)  # ~30 FPS smooth stream rate
+                time.sleep(0.05)
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
@@ -305,21 +305,25 @@ def video_feed(session_id: str):
     safe_session = "".join(c for c in session_id if c.isalnum() or c == "-")
 
     def generate():
-        last_bytes = None
+        last_sent_bytes = None
         while True:
             with CACHE_LOCK:
                 LAST_VIEWED["demo1"] = time.time()
                 frame_data = FRAME_CACHE.get(safe_session) or FRAME_CACHE.get("demo1")
-            if frame_data:
-                last_bytes = frame_data
 
-            if last_bytes:
+            if frame_data and frame_data is not last_sent_bytes:
+                last_sent_bytes = frame_data
                 yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + last_bytes + b"\r\n")
+                       b"Content-Type: image/jpeg\r\n\r\n" + frame_data + b"\r\n")
+                time.sleep(0.015)
+            elif last_sent_bytes:
+                time.sleep(0.01)
             else:
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
-            time.sleep(0.033)
+                time.sleep(0.05)
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
