@@ -141,7 +141,54 @@ def demo_feed(demo_name: str):
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
-@app.route("/heatmap_feed/<session_id>")
+# ---------------------------------------------------------------------------
+# Smooth Pre-rendered Feed — streams offline-processed MP4s as MJPEG loops
+# Zero real-time YOLO. Perfectly smooth regardless of viewer count.
+# Pre-render once with: python run_offline_tracking.py
+# ---------------------------------------------------------------------------
+@app.route("/smooth_feed/<demo_name>")
+def smooth_feed(demo_name: str):
+    """
+    Streams a pre-rendered annotated MP4 as a looping MJPEG stream.
+    No live inference — just serves frames from disk at target FPS.
+    """
+    if demo_name not in ALLOWED_DEMOS:
+        return "Not found", 404
+
+    video_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "output", f"{demo_name}_tracked.mp4"
+    )
+
+    if not os.path.exists(video_path):
+        return f"Pre-rendered video not found. Run: python run_offline_tracking.py", 503
+
+    def generate():
+        import cv2 as _cv2
+        while True:  # loop forever
+            cap = _cv2.VideoCapture(video_path)
+            source_fps = cap.get(_cv2.CAP_PROP_FPS) or 25.0
+            frame_delay = 1.0 / min(source_fps, 15)  # stream at up to 15 FPS
+
+            while cap.isOpened():
+                t0 = time.time()
+                ret, frame = cap.read()
+                if not ret:
+                    break  # video ended — restart outer loop
+                _, buf = _cv2.imencode(
+                    ".jpg", frame, [int(_cv2.IMWRITE_JPEG_QUALITY), 60]
+                )
+                yield (b"--frame\r\n"
+                       b"Content-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n")
+                elapsed = time.time() - t0
+                sleep_t = frame_delay - elapsed
+                if sleep_t > 0:
+                    time.sleep(sleep_t)
+            cap.release()
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
 def heatmap_feed(session_id: str):
     safe_session = "".join(c for c in session_id if c.isalnum() or c == "-")
     frame_path = f"/dev/shm/poultry_heatmap_{safe_session}.jpg"
