@@ -105,6 +105,42 @@ def video_feed(session_id: str):
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
+# ---------------------------------------------------------------------------
+# Shared Demo Feed — served by video_worker.py (no per-session YOLO)
+# ---------------------------------------------------------------------------
+ALLOWED_DEMOS = {"demo1", "demo2", "demo3", "demo4"}
+
+@app.route("/demo_feed/<demo_name>")
+def demo_feed(demo_name: str):
+    """
+    MJPEG stream backed by video_worker.py shared frame files.
+    All viewers of the same demo share one YOLO loop — no lag from multiple viewers.
+    """
+    if demo_name not in ALLOWED_DEMOS:
+        return "Not found", 404
+
+    frame_path = f"/dev/shm/poultry_frame_{demo_name}.jpg"
+
+    def generate():
+        while True:
+            if os.path.exists(frame_path):
+                try:
+                    with open(frame_path, "rb") as f:
+                        jpeg_bytes = f.read()
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
+                except Exception:
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
+            else:
+                # Worker not started yet — send black placeholder
+                yield (b"--frame\r\n"
+                       b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
+            time.sleep(0.125)  # ~8 FPS read rate
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
 @app.route("/heatmap_feed/<session_id>")
 def heatmap_feed(session_id: str):
     safe_session = "".join(c for c in session_id if c.isalnum() or c == "-")
