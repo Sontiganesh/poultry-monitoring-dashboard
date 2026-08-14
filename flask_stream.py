@@ -116,22 +116,40 @@ def _in_memory_video_worker(demo_name: str, config: dict):
         analytics.is_poultry = is_poultry
         event_engine = EventEngine()
 
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 300
         source_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         target_delay = 1.0 / source_fps
+        video_start_wall = time.time()
         frame_count = 0
         current_dets = []
 
         while cap.isOpened():
             loop_start = time.time()
-            ret, frame = cap.read()
-            if not ret:
+            
+            # Synchronize video frame index to real-world wall-clock time
+            elapsed_wall = time.time() - video_start_wall
+            target_frame = int(elapsed_wall * source_fps)
+
+            if target_frame >= total_frames:
+                video_start_wall = time.time()
+                target_frame = 0
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                ret, frame = cap.read()
-                if not ret:
-                    break
                 tracker = PoultryTracker(model_path="yolov8n.pt", tracker_algo="bytetrack")
                 frame_count = 0
+
+            curr_pos = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+            if target_frame > curr_pos + 1:
+                # Catch up to real time by skipping intermediate frames
+                for _ in range(min(target_frame - curr_pos - 1, 15)):
+                    cap.grab()
+            elif target_frame < curr_pos:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+
+            ret, frame = cap.read()
+            if not ret:
+                video_start_wall = time.time()
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                continue
 
             frame = cv2.resize(frame, RESOLUTION)
             frame_count += 1
