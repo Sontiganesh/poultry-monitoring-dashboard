@@ -1,11 +1,11 @@
 """
-Unified MJPEG Streaming + REST API Server + Smooth Async Live AI Workers
+Unified MJPEG Streaming + REST API Server + On-Demand 30 FPS AI Workers
 ========================================================================
-Port 8502 — Standalone service running Flask, Smooth 25 FPS In-Memory AI Workers, and REST APIs.
+Port 8502 — High-performance Flask Server with On-Demand Live AI Workers.
 
 Features:
-  - Non-blocking 25 FPS smooth video playback (Zero frame skipping, zero freezing)
-  - Async background YOLOv8 + ByteTrack object tracking
+  - On-Demand Streamer Power Management (Saves CPU when streams aren't viewed)
+  - 30 FPS smooth video streaming with non-blocking async YOLOv8 + ByteTrack tracking
   - 100% In-Memory RAM Caching (Zero disk I/O, zero file locks)
   - Automatic 30-second Webhook Dispatcher
   - REST API Endpoints (/api/status, /api/metrics, /api/alerts, /api/events)
@@ -20,7 +20,7 @@ import threading
 import cv2
 import torch
 
-# Restrict PyTorch & OpenCV to single threads to prevent CPU starvation
+# Restrict PyTorch & OpenCV CPU thread pools to prevent CPU starvation
 torch.set_num_threads(1)
 cv2.setNumThreads(1)
 
@@ -38,9 +38,10 @@ from src import state_store
 app = Flask(__name__)
 
 # ---------------------------------------------------------------------------
-# In-Memory Frame Cache & Global State
+# In-Memory Frame Cache & Activity Tracking
 # ---------------------------------------------------------------------------
 FRAME_CACHE = {}
+LAST_VIEWED = {}
 CACHE_LOCK = threading.Lock()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -58,7 +59,7 @@ IGNORED_CLASSES = {
 }
 
 RESOLUTION = (640, 360)
-JPEG_QUALITY = 75
+JPEG_QUALITY = 70
 
 
 def _make_black_jpeg(width=640, height=360):
@@ -100,7 +101,7 @@ class SmoothLiveStreamer:
         self.ai_busy = False
 
     def _async_ai_worker(self, frame_copy, tracker, zone_manager, analytics, event_engine):
-        """Runs YOLO tracking in background without delaying video playback."""
+        """Runs fast YOLO tracking in background without blocking video stream."""
         try:
             raw_dets = tracker.process_frame(frame_copy, is_poultry=self.is_poultry)
             filtered_dets = [
@@ -129,22 +130,34 @@ class SmoothLiveStreamer:
             self.ai_busy = False
 
     def run(self):
-        print(f"[STREAMER:{self.demo_name}] Starting smooth 25 FPS live worker for {self.camera_id}...")
+        print(f"[STREAMER:{self.demo_name}] Starting 30 FPS live worker for {self.camera_id}...")
         tracker = PoultryTracker(model_path="yolov8n.pt", tracker_algo="bytetrack")
         visualizer = Visualizer()
         webhook_dispatcher = WebhookDispatcher(camera_id=self.camera_id)
         last_webhook_time = time.time() - 30.0
 
+        # Mark initially viewed so first frames build immediately
+        with CACHE_LOCK:
+            LAST_VIEWED[self.demo_name] = time.time()
+
         while True:
+            # Standby mode if stream hasn't been viewed in 15 seconds (Saves CPU)
+            with CACHE_LOCK:
+                time_since_viewed = time.time() - LAST_VIEWED.get(self.demo_name, time.time())
+
+            if time_since_viewed > 15.0:
+                time.sleep(0.3)
+                continue
+
             cap = cv2.VideoCapture(self.video_path)
             if not cap.isOpened():
-                time.sleep(3)
+                time.sleep(2)
                 continue
 
             ret, first_frame = cap.read()
             if not ret:
                 cap.release()
-                time.sleep(2)
+                time.sleep(1)
                 continue
 
             first_frame = cv2.resize(first_frame, RESOLUTION)
@@ -155,10 +168,15 @@ class SmoothLiveStreamer:
             event_engine = EventEngine()
 
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            source_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-            frame_delay = 1.0 / min(source_fps, 25.0)
+            source_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+            frame_delay = 1.0 / min(source_fps, 30.0)
 
             while cap.isOpened():
+                # Check standby condition inside video loop
+                with CACHE_LOCK:
+                    if time.time() - LAST_VIEWED.get(self.demo_name, time.time()) > 15.0:
+                        break
+
                 t0 = time.time()
                 ret, frame = cap.read()
                 if not ret:
@@ -169,7 +187,7 @@ class SmoothLiveStreamer:
 
                 frame = cv2.resize(frame, RESOLUTION)
 
-                # Launch AI tracking in background thread whenever free
+                # Trigger AI tracking in background whenever free
                 if not self.ai_busy:
                     self.ai_busy = True
                     threading.Thread(
@@ -182,7 +200,7 @@ class SmoothLiveStreamer:
                 with self.lock:
                     dets = list(self.latest_dets)
 
-                # Draw overlays and cache JPEG frame in RAM at smooth 25 FPS
+                # Draw overlays and cache JPEG frame in RAM at smooth 30 FPS
                 frame_disp = visualizer.draw_zones(frame, zone_manager)
                 frame_disp = visualizer.draw_tracking(frame_disp, dets, analytics)
                 _, buf = cv2.imencode(".jpg", frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
@@ -211,7 +229,7 @@ class SmoothLiveStreamer:
                         webhook_dispatcher.dispatch(webhook_url, payload)
                         last_webhook_time = curr_t
 
-                # Exact 25 FPS stream pacing — NEVER blocks or freezes!
+                # Exact 30 FPS stream pacing — smooth continuous playback
                 elapsed = time.time() - t0
                 sleep_t = frame_delay - elapsed
                 if sleep_t > 0:
@@ -222,7 +240,7 @@ class SmoothLiveStreamer:
 
 
 def start_background_workers():
-    """Start smooth live video stream workers for all 4 demo videos."""
+    """Start live video stream workers for all demo videos."""
     for demo_name, config in DEMO_CONFIGS.items():
         if os.path.exists(config["path"]):
             streamer = SmoothLiveStreamer(demo_name, config)
@@ -232,7 +250,7 @@ def start_background_workers():
                 name=f"streamer-{demo_name}"
             )
             t.start()
-            time.sleep(1.5)
+            time.sleep(1.0)
 
 
 # Start background workers automatically when server starts
@@ -263,8 +281,11 @@ def demo_feed(demo_name: str):
     def generate():
         last_bytes = None
         while True:
+            # Mark stream active
             with CACHE_LOCK:
+                LAST_VIEWED[demo_name] = time.time()
                 frame_data = FRAME_CACHE.get(demo_name)
+
             if frame_data:
                 last_bytes = frame_data
 
@@ -274,7 +295,7 @@ def demo_feed(demo_name: str):
             else:
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
-            time.sleep(0.04)  # ~25 FPS smooth stream rate
+            time.sleep(0.033)  # ~30 FPS smooth stream rate
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
@@ -287,6 +308,7 @@ def video_feed(session_id: str):
         last_bytes = None
         while True:
             with CACHE_LOCK:
+                LAST_VIEWED["demo1"] = time.time()
                 frame_data = FRAME_CACHE.get(safe_session) or FRAME_CACHE.get("demo1")
             if frame_data:
                 last_bytes = frame_data
@@ -297,7 +319,7 @@ def video_feed(session_id: str):
             else:
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
-            time.sleep(0.04)
+            time.sleep(0.033)
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
