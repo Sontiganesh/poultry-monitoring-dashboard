@@ -34,13 +34,8 @@ class PoultryTracker:
             print(f"Failed to generate custom tracker config, falling back to default: {e}")
             self.tracker_type = f"{tracker_algo}.yaml"
 
-        # Determine default imgsz based on model speed / complexity
-        if 'yolov8n' in model_path.lower():
-            self.default_imgsz = 416
-        elif 'yolov8s' in model_path.lower():
-            self.default_imgsz = 416
-        else:
-            self.default_imgsz = 320  # Keep 320 for medium and world models to prevent lag on weak CPU
+        # Set imgsz to 320 for fast real-time inference on CPU (~35ms per frame)
+        self.default_imgsz = 320
 
         # Initialize model
         if self.is_world_model:

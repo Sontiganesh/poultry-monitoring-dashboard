@@ -57,8 +57,8 @@ IGNORED_CLASSES = {
     "bottle", "wine glass", "traffic light", "chair",
 }
 
-RESOLUTION = (480, 270)
-JPEG_QUALITY = 60
+RESOLUTION = (640, 360)
+JPEG_QUALITY = 75
 
 
 def _make_black_jpeg(width=640, height=360):
