@@ -1,12 +1,12 @@
 """
-Unified MJPEG Streaming + REST API Server + In-Memory AI Workers
-==================================================================
-Port 8502 — Standalone service running Flask, In-Memory AI Video Workers, and REST APIs.
+Unified MJPEG Streaming + REST API Server + Smooth Async Live AI Workers
+========================================================================
+Port 8502 — Standalone service running Flask, Smooth 25 FPS In-Memory AI Workers, and REST APIs.
 
 Features:
-  - 100% In-Memory JPEG Frame Caching (Zero disk I/O, zero file locks)
-  - 25 FPS smooth natural playback with live YOLOv8 + ByteTrack AI tracking
-  - Built-in automatic video workers for demo1, demo2, demo3, demo4
+  - Non-blocking 25 FPS smooth video playback (Zero frame skipping, zero freezing)
+  - Async background YOLOv8 + ByteTrack object tracking
+  - 100% In-Memory RAM Caching (Zero disk I/O, zero file locks)
   - Automatic 30-second Webhook Dispatcher
   - REST API Endpoints (/api/status, /api/metrics, /api/alerts, /api/events)
 """
@@ -18,6 +18,11 @@ import sys
 import datetime
 import threading
 import cv2
+import torch
+
+# Restrict PyTorch & OpenCV to single threads to prevent CPU starvation
+torch.set_num_threads(1)
+cv2.setNumThreads(1)
 
 # Add the project root to the Python path so we can import src/
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -54,7 +59,6 @@ IGNORED_CLASSES = {
 
 RESOLUTION = (480, 270)
 JPEG_QUALITY = 60
-TRACK_EVERY_N = 2
 
 
 def _make_black_jpeg(width=640, height=360):
@@ -69,7 +73,7 @@ def _make_black_jpeg(width=640, height=360):
             b"\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t"
             b"\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a"
             b"\x1f\x1e\x1d\x1a\x1c\x1c $.' \",#\x1c\x1c(7),01444\x1f'9=82<.342\x1e"
-            b"\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\1\x00"
+            b"\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00"
             b"\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00"
             b"\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b"
             b"\xff\xc4\x00\xb5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04"
@@ -82,147 +86,150 @@ _BLACK_FRAME = _make_black_jpeg()
 
 
 # ---------------------------------------------------------------------------
-# Background In-Memory AI Video Workers
+# Smooth Asynchronous Video & AI Worker
 # ---------------------------------------------------------------------------
-def _in_memory_video_worker(demo_name: str, config: dict):
-    video_path = config["path"]
-    is_poultry = config["is_poultry"]
-    camera_id = config["camera"]
+class SmoothLiveStreamer:
+    def __init__(self, demo_name: str, config: dict):
+        self.demo_name = demo_name
+        self.video_path = config["path"]
+        self.is_poultry = config["is_poultry"]
+        self.camera_id = config["camera"]
 
-    print(f"[WORKER:{demo_name}] Loading YOLO tracker for {camera_id}...")
-    tracker = PoultryTracker(model_path="yolov8n.pt", tracker_algo="bytetrack")
-    visualizer = Visualizer()
-    webhook_dispatcher = WebhookDispatcher(camera_id=camera_id)
-    last_webhook_time = time.time() - 30.0
+        self.latest_dets = []
+        self.lock = threading.Lock()
+        self.ai_busy = False
 
-    print(f"[WORKER:{demo_name}] Active — In-memory live streaming.")
+    def _async_ai_worker(self, frame_copy, tracker, zone_manager, analytics, event_engine):
+        """Runs YOLO tracking in background without delaying video playback."""
+        try:
+            raw_dets = tracker.process_frame(frame_copy, is_poultry=self.is_poultry)
+            filtered_dets = [
+                d for d in raw_dets
+                if d.get("class_name", "") not in IGNORED_CLASSES
+            ]
+            for det in filtered_dets:
+                cx, cy = det["center"]
+                x1, y1, x2, y2 = det["box"]
+                analytics.update(
+                    det["track_id"], cx, cy,
+                    zone_manager.get_zone(cx, cy),
+                    class_id=det.get("class_id", 14),
+                    class_name=det.get("class_name", "bird"),
+                    box_area=(x2 - x1) * (y2 - y1),
+                )
+            new_events = event_engine.process(filtered_dets, analytics, zone_manager, is_poultry=self.is_poultry)
+            for evt in new_events:
+                state_store.add_event(evt)
 
-    while True:
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            time.sleep(3)
-            continue
+            with self.lock:
+                self.latest_dets = filtered_dets
+        except Exception:
+            pass
+        finally:
+            self.ai_busy = False
 
-        ret, first_frame = cap.read()
-        if not ret:
-            cap.release()
-            time.sleep(2)
-            continue
+    def run(self):
+        print(f"[STREAMER:{self.demo_name}] Starting smooth 25 FPS live worker for {self.camera_id}...")
+        tracker = PoultryTracker(model_path="yolov8n.pt", tracker_algo="bytetrack")
+        visualizer = Visualizer()
+        webhook_dispatcher = WebhookDispatcher(camera_id=self.camera_id)
+        last_webhook_time = time.time() - 30.0
 
-        first_frame = cv2.resize(first_frame, RESOLUTION)
-        h, w = first_frame.shape[:2]
-        zone_manager = ZoneManager(w, h, is_poultry=is_poultry)
-        analytics = PoultryAnalytics()
-        analytics.is_poultry = is_poultry
-        event_engine = EventEngine()
-
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 300
-        source_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-        target_delay = 1.0 / source_fps
-        video_start_wall = time.time()
-        frame_count = 0
-        current_dets = []
-
-        while cap.isOpened():
-            loop_start = time.time()
-            
-            # Synchronize video frame index to real-world wall-clock time
-            elapsed_wall = time.time() - video_start_wall
-            target_frame = int(elapsed_wall * source_fps)
-
-            if target_frame >= total_frames:
-                video_start_wall = time.time()
-                target_frame = 0
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                tracker = PoultryTracker(model_path="yolov8n.pt", tracker_algo="bytetrack")
-                frame_count = 0
-
-            curr_pos = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
-            if target_frame > curr_pos + 1:
-                # Catch up to real time by skipping intermediate frames
-                for _ in range(min(target_frame - curr_pos - 1, 15)):
-                    cap.grab()
-            elif target_frame < curr_pos:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
-
-            ret, frame = cap.read()
-            if not ret:
-                video_start_wall = time.time()
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        while True:
+            cap = cv2.VideoCapture(self.video_path)
+            if not cap.isOpened():
+                time.sleep(3)
                 continue
 
-            frame = cv2.resize(frame, RESOLUTION)
-            frame_count += 1
+            ret, first_frame = cap.read()
+            if not ret:
+                cap.release()
+                time.sleep(2)
+                continue
 
-            if frame_count % TRACK_EVERY_N == 0 or frame_count == 1:
-                raw_dets = tracker.process_frame(frame, is_poultry=is_poultry)
-                current_dets = [
-                    d for d in raw_dets
-                    if d.get("class_name", "") not in IGNORED_CLASSES
-                ]
-                for det in current_dets:
-                    cx, cy = det["center"]
-                    x1, y1, x2, y2 = det["box"]
-                    analytics.update(
-                        det["track_id"], cx, cy,
-                        zone_manager.get_zone(cx, cy),
-                        class_id=det.get("class_id", 14),
-                        class_name=det.get("class_name", "bird"),
-                        box_area=(x2 - x1) * (y2 - y1),
-                    )
-                new_events = event_engine.process(current_dets, analytics, zone_manager, is_poultry=is_poultry)
-                for evt in new_events:
-                    state_store.add_event(evt)
+            first_frame = cv2.resize(first_frame, RESOLUTION)
+            h, w = first_frame.shape[:2]
+            zone_manager = ZoneManager(w, h, is_poultry=self.is_poultry)
+            analytics = PoultryAnalytics()
+            analytics.is_poultry = self.is_poultry
+            event_engine = EventEngine()
 
-            frame_disp = visualizer.draw_zones(frame, zone_manager)
-            frame_disp = visualizer.draw_tracking(frame_disp, current_dets, analytics)
-            _, buf = cv2.imencode(".jpg", frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            source_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            frame_delay = 1.0 / min(source_fps, 25.0)
 
-            # Store in RAM cache thread-safely (No disk I/O!)
-            jpeg_bytes = buf.tobytes()
-            with CACHE_LOCK:
-                FRAME_CACHE[demo_name] = jpeg_bytes
-                FRAME_CACHE[f"poultry_frame_{demo_name}"] = jpeg_bytes
+            while cap.isOpened():
+                t0 = time.time()
+                ret, frame = cap.read()
+                if not ret:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
 
-            # Webhook dispatch every 30 seconds
-            current_time = time.time()
-            if current_time - last_webhook_time >= 30.0:
-                webhook_url = os.environ.get("WEBHOOK_URL", "https://webhook.site/7e5a79b4-1918-41a5-b090-50d74ed643c9")
-                if webhook_url:
-                    stats = analytics.get_summary_stats()
-                    zone_occ = zone_manager.get_zone_occupancy(current_dets)
-                    events_since = state_store.flush_events_since_ping()
-                    alerts_list = state_store.get_alerts(limit=10)
+                frame = cv2.resize(frame, RESOLUTION)
 
-                    payload = webhook_dispatcher.build_payload(
-                        analytics_stats=stats,
-                        zone_occupancy=zone_occ,
-                        events_since_last_ping=events_since,
-                        alerts=alerts_list,
-                        is_poultry=is_poultry,
-                    )
-                    webhook_dispatcher.dispatch(webhook_url, payload)
-                    last_webhook_time = current_time
+                # Launch AI tracking in background thread whenever free
+                if not self.ai_busy:
+                    self.ai_busy = True
+                    threading.Thread(
+                        target=self._async_ai_worker,
+                        args=(frame.copy(), tracker, zone_manager, analytics, event_engine),
+                        daemon=True
+                    ).start()
 
-            # Precision 1.0x FPS Limiter
-            elapsed = time.time() - loop_start
-            sleep_t = target_delay - elapsed
-            if sleep_t > 0:
-                time.sleep(sleep_t)
+                # Get latest available detections thread-safely
+                with self.lock:
+                    dets = list(self.latest_dets)
 
-        cap.release()
-        time.sleep(0.05)
+                # Draw overlays and cache JPEG frame in RAM at smooth 25 FPS
+                frame_disp = visualizer.draw_zones(frame, zone_manager)
+                frame_disp = visualizer.draw_tracking(frame_disp, dets, analytics)
+                _, buf = cv2.imencode(".jpg", frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
+
+                jpeg_bytes = buf.tobytes()
+                with CACHE_LOCK:
+                    FRAME_CACHE[self.demo_name] = jpeg_bytes
+                    FRAME_CACHE[f"poultry_frame_{self.demo_name}"] = jpeg_bytes
+
+                # Webhook dispatch every 30s
+                curr_t = time.time()
+                if curr_t - last_webhook_time >= 30.0:
+                    webhook_url = os.environ.get("WEBHOOK_URL", "https://webhook.site/7e5a79b4-1918-41a5-b090-50d74ed643c9")
+                    if webhook_url:
+                        stats = analytics.get_summary_stats()
+                        zone_occ = zone_manager.get_zone_occupancy(dets)
+                        events_since = state_store.flush_events_since_ping()
+                        alerts_list = state_store.get_alerts(limit=10)
+                        payload = webhook_dispatcher.build_payload(
+                            analytics_stats=stats,
+                            zone_occupancy=zone_occ,
+                            events_since_last_ping=events_since,
+                            alerts=alerts_list,
+                            is_poultry=self.is_poultry,
+                        )
+                        webhook_dispatcher.dispatch(webhook_url, payload)
+                        last_webhook_time = curr_t
+
+                # Exact 25 FPS stream pacing — NEVER blocks or freezes!
+                elapsed = time.time() - t0
+                sleep_t = frame_delay - elapsed
+                if sleep_t > 0:
+                    time.sleep(sleep_t)
+
+            cap.release()
+            time.sleep(0.05)
 
 
 def start_background_workers():
-    """Start in-memory AI streaming workers for all 4 demo videos."""
+    """Start smooth live video stream workers for all 4 demo videos."""
     for demo_name, config in DEMO_CONFIGS.items():
         if os.path.exists(config["path"]):
+            streamer = SmoothLiveStreamer(demo_name, config)
             t = threading.Thread(
-                target=_in_memory_video_worker,
-                args=(demo_name, config),
+                target=streamer.run,
                 daemon=True,
-                name=f"worker-{demo_name}"
+                name=f"streamer-{demo_name}"
             )
             t.start()
             time.sleep(1.5)
@@ -244,7 +251,7 @@ def add_cors_headers(response):
 
 
 # ---------------------------------------------------------------------------
-# MJPEG Streams (100% In-Memory RAM Streaming)
+# MJPEG Streams (100% Smooth In-Memory RAM Streaming)
 # ---------------------------------------------------------------------------
 ALLOWED_DEMOS = {"demo1", "demo2", "demo3", "demo4"}
 
@@ -267,7 +274,7 @@ def demo_feed(demo_name: str):
             else:
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
-            time.sleep(0.04)  # ~25 FPS stream rate
+            time.sleep(0.04)  # ~25 FPS smooth stream rate
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
@@ -280,7 +287,6 @@ def video_feed(session_id: str):
         last_bytes = None
         while True:
             with CACHE_LOCK:
-                # Check for session frame or fall back to demo1
                 frame_data = FRAME_CACHE.get(safe_session) or FRAME_CACHE.get("demo1")
             if frame_data:
                 last_bytes = frame_data
