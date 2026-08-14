@@ -289,20 +289,10 @@ def demo_feed(demo_name: str):
                 last_sent_bytes = frame_data
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + frame_data + b"\r\n")
-                time.sleep(0.015)
-            elif last_sent_bytes:
-                time.sleep(0.01)
-            else:
-                yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
-                time.sleep(0.05)
 
-    res = Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
-    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, pre-check=0, post-check=0"
-    res.headers["Pragma"] = "no-cache"
-    res.headers["Expires"] = "0"
-    res.headers["X-Content-Type-Options"] = "nosniff"
-    return res
+            time.sleep(0.04)  # ~25 FPS smooth stream rate
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/video_feed/<session_id>")
@@ -320,20 +310,10 @@ def video_feed(session_id: str):
                 last_sent_bytes = frame_data
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + frame_data + b"\r\n")
-                time.sleep(0.015)
-            elif last_sent_bytes:
-                time.sleep(0.01)
-            else:
-                yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
-                time.sleep(0.05)
 
-    res = Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
-    res.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, pre-check=0, post-check=0"
-    res.headers["Pragma"] = "no-cache"
-    res.headers["Expires"] = "0"
-    res.headers["X-Content-Type-Options"] = "nosniff"
-    return res
+            time.sleep(0.04)  # ~25 FPS smooth stream rate
+
+    return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/api/latest_frame/<demo_name>")
