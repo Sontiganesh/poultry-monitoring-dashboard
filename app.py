@@ -480,7 +480,7 @@ if st.session_state.processing and video_path is not None:
     else:
         ret, frame = cap.read()
         if ret:
-            frame = cv2.resize(frame, (640, 360))
+            frame = cv2.resize(frame, (480, 270))  # Smaller resolution = less CPU + bandwidth
             h, w = frame.shape[:2]
             zone_manager = ZoneManager(w, h, is_poultry=is_poultry)
         else:
@@ -489,10 +489,10 @@ if st.session_state.processing and video_path is not None:
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 30
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1000
-        target_fps = 15   # 15 FPS matches the MJPEG stream server read rate — no point encoding faster
+        target_fps = 8    # 8 FPS is smooth enough for CCTV-style monitoring and saves CPU
         frame_delay = 1.0 / target_fps
         video_frame_jump = max(1, int(fps / target_fps))
-        frame_skip = 1    # Run YOLO on every frame for zero delay
+        frame_skip = 3    # Run YOLO every 3rd frame — reduces CPU by ~66%, detections interpolated
         zone_detected_once = False
         frame_count = 0
         last_detections = []
@@ -652,7 +652,7 @@ if st.session_state.processing and video_path is not None:
             # ----------------------------------------------------------------
             frame_disp = visualizer.draw_zones(frame, zone_manager)
             frame_disp = visualizer.draw_tracking(frame_disp, detections, analytics, custom_tags=custom_tags)
-            _, buffer = cv2.imencode(".jpg", frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 55])
+            _, buffer = cv2.imencode(".jpg", frame_disp, [int(cv2.IMWRITE_JPEG_QUALITY), 35])
             push_video_frame(buffer.tobytes())
 
             if mode != "video_only":
