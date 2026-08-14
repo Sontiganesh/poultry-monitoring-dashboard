@@ -79,8 +79,12 @@ class LiveStreamWorker:
             analytics.is_poultry = self.is_poultry
             event_engine = EventEngine()
 
+            source_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+            target_delay = 1.0 / source_fps
             current_dets = []
+
             while cap.isOpened():
+                loop_start = time.time()
                 ret, frame = cap.read()
                 if not ret:
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -150,6 +154,12 @@ class LiveStreamWorker:
                         )
                         self.webhook_dispatcher.dispatch(webhook_url, payload)
                         self.last_webhook_time = current_time
+
+                # Precision FPS limiter for natural real-time video speed
+                elapsed = time.time() - loop_start
+                sleep_t = target_delay - elapsed
+                if sleep_t > 0:
+                    time.sleep(sleep_t)
 
             cap.release()
             time.sleep(0.05)
