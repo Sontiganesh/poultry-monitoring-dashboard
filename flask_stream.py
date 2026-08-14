@@ -85,22 +85,24 @@ def video_feed(session_id: str):
     frame_path = f"/dev/shm/poultry_frame_{safe_session}.jpg"
 
     def generate():
+        last_bytes = None
         while True:
             if os.path.exists(frame_path):
                 try:
                     with open(frame_path, "rb") as f:
-                        jpeg_bytes = f.read()
-                    yield (b"--frame\r\n"
-                           b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
+                        buf = f.read()
+                    if buf and len(buf) > 1000:
+                        last_bytes = buf
                 except Exception:
-                    # On read error, send black frame to keep stream alive
-                    yield (b"--frame\r\n"
-                           b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
+                    pass
+
+            if last_bytes:
+                yield (b"--frame\r\n"
+                       b"Content-Type: image/jpeg\r\n\r\n" + last_bytes + b"\r\n")
             else:
-                # AI processing hasn't started yet — send black frame to keep connection alive
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
-            time.sleep(0.066)  # ~15 FPS
+            time.sleep(0.04)  # ~25 FPS smooth stream
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
@@ -122,21 +124,24 @@ def demo_feed(demo_name: str):
     frame_path = f"/dev/shm/poultry_frame_{demo_name}.jpg"
 
     def generate():
+        last_bytes = None
         while True:
             if os.path.exists(frame_path):
                 try:
                     with open(frame_path, "rb") as f:
-                        jpeg_bytes = f.read()
-                    yield (b"--frame\r\n"
-                           b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n")
+                        buf = f.read()
+                    if buf and len(buf) > 1000:
+                        last_bytes = buf
                 except Exception:
-                    yield (b"--frame\r\n"
-                           b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
+                    pass
+
+            if last_bytes:
+                yield (b"--frame\r\n"
+                       b"Content-Type: image/jpeg\r\n\r\n" + last_bytes + b"\r\n")
             else:
-                # Worker not started yet — send black placeholder
                 yield (b"--frame\r\n"
                        b"Content-Type: image/jpeg\r\n\r\n" + _BLACK_FRAME + b"\r\n")
-            time.sleep(0.066)  # ~15 FPS smooth read rate
+            time.sleep(0.04)  # ~25 FPS smooth stream
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 

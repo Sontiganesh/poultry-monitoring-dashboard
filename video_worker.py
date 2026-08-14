@@ -42,9 +42,9 @@ IGNORED_CLASSES = {
     "bottle", "wine glass", "traffic light", "chair",
 }
 
-TARGET_FPS   = 15      # 15 FPS smooth video streaming rate
+TARGET_FPS   = 25      # 25 FPS smooth video streaming rate
 RESOLUTION   = (640, 360)
-JPEG_QUALITY = 55
+JPEG_QUALITY = 65
 
 
 class LiveStreamWorker:
