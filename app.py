@@ -119,7 +119,20 @@ img {{ max-width:100%; max-height:100%; object-fit:contain; }}
 
 if mode == "drone_embed":
     from src.drone_dashboard import render_drone_embed
-    render_drone_embed(query_params.get("traffic_video", ""))
+    render_drone_embed(
+        query_params.get("traffic_video", ""),
+        webhook_url=query_params.get("webhook", ""),
+        camera_id=query_params.get("camera", ""),
+    )
+    st.stop()
+if mode == "drone_video_only":
+    from src.drone_dashboard import render_drone_embed
+    render_drone_embed(
+        query_params.get("traffic_video", ""),
+        webhook_url=query_params.get("webhook", ""),
+        camera_id=query_params.get("camera", ""),
+        video_only=True,
+    )
     st.stop()
 if mode == "embed":
     st.markdown("""<style>

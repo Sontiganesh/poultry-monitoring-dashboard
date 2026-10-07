@@ -14,6 +14,9 @@
     .label { color: #5f6368; font-size: 12px; }
     .value { margin-top: 3px; font-size: 22px; font-weight: 650; }
     .classes, .notes { margin-top: 9px; color: #5f6368; font-size: 13px; }
+    body.video-only { background: #0b0b0b; overflow: hidden; }
+    body.video-only video { max-height: 88vh; height: 88vh; object-fit: contain; border-radius: 0; }
+    body.video-only .status, body.video-only .summary { display: none; }
   </style>
 </head>
 <body>
@@ -36,6 +39,11 @@
     let fps = 30;
     let loopEnabled = true;
     let lastHeight = 0;
+    let displayAnalytics = true;
+    let webhookEnabled = false;
+    let webhookIntervalSeconds = 30;
+    let lastWebhookSentAt = 0;
+    let webhookSequence = 0;
 
     // Start demos immediately; muted playback is allowed by modern browsers.
     video.autoplay = true;
@@ -50,6 +58,7 @@
     function renderAnalytics() {
       const frameIndex = Math.max(0, Math.min(frames.length - 1, Math.floor((video.currentTime || 0) * fps)));
       const frame = frames[frameIndex] || {};
+      document.body.classList.toggle("video-only", !displayAnalytics);
       const items = [
         ["Vehicles visible", frame.count ?? 0],
         ["Moving", frame.moving ?? "Not measured"],
@@ -80,11 +89,40 @@
       status.textContent = `Playback time ${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")} · analytics update with the playing frame`;
       sendHeight();
     }
-    video.addEventListener("timeupdate", renderAnalytics);
+    function sendPlaybackUpdate(force = false) {
+      if (!webhookEnabled || video.readyState < 1) return;
+      const now = Date.now();
+      if (!force && now - lastWebhookSentAt < webhookIntervalSeconds * 1000) return;
+      lastWebhookSentAt = now;
+      const frameIndex = Math.max(0, Math.min(frames.length - 1, Math.floor((video.currentTime || 0) * fps)));
+      const frame = frames[frameIndex] || {};
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:setComponentValue",
+        dataType: "json",
+        value: {
+          sequence: ++webhookSequence,
+          playback_time_sec: Number((video.currentTime || 0).toFixed(2)),
+          frame_index: frameIndex,
+          count: frame.count ?? 0,
+          classes: frame.classes || {},
+          tracked: frame.tracked ?? null,
+          moving: frame.moving ?? null,
+          stationary: frame.stationary ?? null,
+          uncertain: frame.uncertain ?? null,
+          directions: frame.directions || {}
+        }
+      }, "*");
+    }
+    video.addEventListener("timeupdate", () => {
+      renderAnalytics();
+      sendPlaybackUpdate();
+    });
     video.addEventListener("seeked", renderAnalytics);
     video.addEventListener("loadedmetadata", () => {
       if (loopEnabled) video.loop = true;
       renderAnalytics();
+      sendPlaybackUpdate(true);
       video.play().catch(() => {
         status.textContent = "Press play to start the video; analytics follow its playback time.";
       });
@@ -96,6 +134,9 @@
       const args = message.args;
       loopEnabled = Boolean(args.loop);
       video.loop = loopEnabled;
+      displayAnalytics = args.display_analytics !== false;
+      webhookEnabled = Boolean(args.webhook_enabled);
+      webhookIntervalSeconds = Math.max(5, Number(args.webhook_interval_seconds) || 30);
       frames = Array.isArray(args.frames) ? args.frames : [];
       fps = Number(args.fps) || 30;
       if (args.video_url && video.dataset.src !== args.video_url) {

@@ -1,11 +1,14 @@
 import json
+import datetime
+import ipaddress
 import os
 import re
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
 
 import streamlit as st
 import streamlit.components.v1 as components
+from src.webhook import WebhookDispatcher
 
 PLATFORM_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = PLATFORM_ROOT / "results" / "drone_traffic"
@@ -91,7 +94,79 @@ def _streamlit_media_url(video):
         return None
 
 
-def _render_saved_analytics(summary, video=None, component_key=None):
+def _valid_webhook_url(value):
+    """Accept public HTTP(S) webhook URLs and reject malformed/private IP targets."""
+    try:
+        parsed = urlsplit(str(value or "").strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+            return False
+        try:
+            address = ipaddress.ip_address(parsed.hostname)
+        except ValueError:
+            hostname = parsed.hostname.lower()
+            return hostname != "localhost" and not hostname.endswith((".localhost", ".local"))
+        return address.is_global
+    except (TypeError, ValueError):
+        return False
+
+
+def _normalize_webhook_camera(webhook_url, camera_id):
+    """Repair a pasted Webhook.site URL that appended camera as a path suffix."""
+    value = str(webhook_url or "").strip()
+    try:
+        parsed = urlsplit(value)
+        marker = "&camera="
+        if not parsed.query and marker in parsed.path:
+            path, _, embedded_camera = parsed.path.partition(marker)
+            value = urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+            camera_id = unquote(embedded_camera) or camera_id
+    except ValueError:
+        pass
+    return value, camera_id
+
+
+def _dispatch_playback_webhook(video_id, camera_id, webhook_url, update):
+    """Forward a playback-time snapshot once per component update."""
+    if not webhook_url or not isinstance(update, dict) or not _valid_webhook_url(webhook_url):
+        return
+    try:
+        sequence = int(update.get("sequence", 0))
+    except (TypeError, ValueError):
+        return
+    sequence_key = f"drone_webhook_sequence_{video_id}_{camera_id}_{abs(hash(webhook_url))}"
+    if sequence <= int(st.session_state.get(sequence_key, 0)):
+        return
+    st.session_state[sequence_key] = sequence
+
+    dispatcher_key = f"drone_webhook_dispatcher_{abs(hash(webhook_url))}"
+    dispatcher = st.session_state.get(dispatcher_key)
+    if dispatcher is None:
+        dispatcher = WebhookDispatcher(camera_id=camera_id or video_id)
+        st.session_state[dispatcher_key] = dispatcher
+    dispatcher.camera_id = camera_id or video_id
+
+    playback_time = update.get("playback_time_sec")
+    payload = {
+        "event": "drone_traffic_playback_snapshot",
+        "camera_id": camera_id or video_id,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "source_video": video_id,
+        "playback_time_sec": round(float(playback_time), 2) if isinstance(playback_time, (int, float)) else None,
+        "frame_index": update.get("frame_index"),
+        "total_count": update.get("count", 0),
+        "vehicle_count": update.get("count", 0),
+        "class_counts": update.get("classes", {}),
+        "tracked_count": update.get("tracked"),
+        "moving_count": update.get("moving"),
+        "stationary_count": update.get("stationary"),
+        "uncertain_count": update.get("uncertain"),
+        "direction_counts": update.get("directions", {}),
+    }
+    dispatcher.dispatch(webhook_url, payload)
+
+
+def _render_saved_analytics(summary, video=None, component_key=None,
+                            webhook_url="", camera_id="", video_only=False):
     """Render saved traffic analytics as readable KPI and segment cards."""
     if not summary.is_file():
         st.caption("No analytics summary is saved for this clip.")
@@ -125,8 +200,9 @@ def _render_saved_analytics(summary, video=None, component_key=None):
     has_frame_data = detections_csv.is_file() or tracks_csv.is_file()
     if is_detection_summary or has_frame_data:
         vehicle_count = int(snapshot.get("observation_count", vehicle_count) or 0)
-        st.subheader("Per-frame traffic")
-        st.caption("Inspect the vehicle count and class mix for each video frame. Motion and direction are estimated separately from tracked detections; direction is relative to the screen.")
+        if not video_only:
+            st.subheader("Per-frame traffic")
+            st.caption("Inspect the vehicle count and class mix for each video frame. Motion and direction are estimated separately from tracked detections; direction is relative to the screen.")
         frame_count = int(snapshot.get("frames_processed", payload.get("frames_processed", 0)) or 0)
         if has_frame_data:
             try:
@@ -209,15 +285,19 @@ def _render_saved_analytics(summary, video=None, component_key=None):
 
                     video_url = _streamlit_media_url(video) if video else None
                     if video_url:
-                        _video_with_analytics(
+                        playback_update = _video_with_analytics(
                             video_url=video_url,
                             frames=frame_payload,
                             fps=fps,
                             duration=max_frame / fps,
                             key=component_key or f"drone-video-{video_id}",
                             loop=True,
+                            display_analytics=not video_only,
+                            webhook_enabled=bool(webhook_url and _valid_webhook_url(webhook_url)),
+                            webhook_interval_seconds=30,
                         )
                     else:
+                        playback_update = None
                         selected_frame = st.slider(
                             "Inspect frame",
                             min_value=0,
@@ -226,9 +306,14 @@ def _render_saved_analytics(summary, video=None, component_key=None):
                             key=f"frame-inspector-{video_id}",
                         )
                         st.video(str(video), loop=True) if video else None
-                    if video_url:
+                    if video_url and not video_only:
                         st.caption("The player shows saved detections and motion estimates for its current playback second.")
-                    else:
+                    if video_url and webhook_url and not _valid_webhook_url(webhook_url) and not video_only:
+                        st.warning("Webhook URL must be a valid public HTTP or HTTPS endpoint.")
+                    _dispatch_playback_webhook(video_id, camera_id, webhook_url, playback_update)
+                    if video_only:
+                        return
+                    if not video_url:
                         class_row = per_frame.loc[selected_frame].drop(labels=["Total vehicles in frame"])
                         detected_classes = [(name, int(value)) for name, value in class_row.items() if value]
                         frame_cols = st.columns(min(6, max(1, len(detected_classes) + 1)))
@@ -286,6 +371,23 @@ def _render_saved_analytics(summary, video=None, component_key=None):
             except (ImportError, OSError, ValueError, KeyError) as exc:
                 st.warning(f"Could not build per-frame analytics from the saved detections and tracks: {exc}")
         else:
+            if video_only:
+                video_url = _streamlit_media_url(video) if video else None
+                if video_url:
+                    _video_with_analytics(
+                        video_url=video_url,
+                        frames=[],
+                        fps=float(payload.get("source_fps", 30) or 30),
+                        duration=0,
+                        key=component_key or f"drone-video-{video_id}",
+                        loop=True,
+                        display_analytics=False,
+                        webhook_enabled=False,
+                        webhook_interval_seconds=30,
+                    )
+                elif video:
+                    st.video(str(video), loop=True)
+                return
             st.info("Direction, road-segment, speed, and parked-versus-moving analytics were not measured in this detection-only run.")
         st.download_button(
             "Download full analysis JSON",
@@ -361,9 +463,17 @@ def _render_saved_analytics(summary, video=None, component_key=None):
     )
 
 
-def render_drone_embed(video_id):
-    """Read-only embed view for one completed drone analysis."""
-    st.markdown("""<style>
+def render_drone_embed(video_id, webhook_url="", camera_id="", video_only=False):
+    """Embed a saved drone clip with optional playback-time webhook snapshots."""
+    webhook_url, camera_id = _normalize_webhook_camera(webhook_url, camera_id)
+    if video_only:
+        st.markdown("""<style>
+    [data-testid="stSidebar"] { display: none !important; }
+    header, footer { display: none !important; }
+    .block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
+    </style>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""<style>
     [data-testid="stSidebar"] { display: none !important; }
     header, footer { display: none !important; }
     .block-container { padding-top: 0.75rem !important; }
@@ -373,13 +483,41 @@ def render_drone_embed(video_id):
         st.error("This drone traffic video is unavailable or the embed link is invalid.")
         return
 
-    st.title("🚁 Drone Traffic Analysis")
-    _render_saved_analytics(summary, video=video, component_key=f"drone-embed-{video_id}")
+    if not video_only:
+        st.title("🚁 Drone Traffic Analysis")
+    if webhook_url and not _valid_webhook_url(webhook_url):
+        st.error("The webhook URL must be a valid public HTTP or HTTPS endpoint.")
+        webhook_url = ""
+    _render_saved_analytics(
+        summary,
+        video=video,
+        component_key=f"drone-embed-{video_id}-{camera_id or 'camera'}-{abs(hash(webhook_url))}",
+        webhook_url=webhook_url,
+        camera_id=camera_id,
+        video_only=video_only,
+    )
 
 
 def render_drone_traffic():
     st.title("🚁 Saved Drone Traffic Results")
     st.caption("Choose a processed video to replay it and review its saved traffic analytics.")
+
+    with st.expander("Webhook updates and video-only embed", expanded=True):
+        webhook_url = st.text_input(
+            "Webhook URL",
+            value=os.environ.get("DRONE_TRAFFIC_WEBHOOK_URL") or os.environ.get("WEBHOOK_URL", ""),
+            placeholder="https://webhook.site/your-unique-id",
+            key="drone_playback_webhook_url",
+        ).strip()
+        camera_id = st.text_input(
+            "Camera ID",
+            value=os.environ.get("DRONE_CAMERA_ID", "CAM_02"),
+            key="drone_playback_camera_id",
+        ).strip() or "CAM_02"
+        webhook_url, camera_id = _normalize_webhook_camera(webhook_url, camera_id)
+        st.caption("The selected clip sends a playback snapshot immediately, then every 30 seconds while it plays. Enter the Webhook.site URL ending in its UUID; camera ID is passed separately.")
+        if webhook_url and not _valid_webhook_url(webhook_url):
+            st.error("Webhook URL must be a valid public HTTP or HTTPS endpoint.")
 
     saved_videos = _saved_videos()
     if saved_videos:
@@ -408,8 +546,25 @@ def render_drone_traffic():
             )
         app_base = _public_app_base_url()
         if app_base:
-            query = urlencode({"mode": "drone_embed", "traffic_video": saved_id})
-            st.markdown(f"[Open or embed this looping video]({app_base}/?{query})")
+            query = urlencode({
+                "mode": "drone_video_only",
+                "traffic_video": saved_id,
+                "webhook": webhook_url,
+                "camera": camera_id,
+            })
+            video_only_url = f"{app_base}/?{query}"
+            st.markdown(f"[Open video-only embed]({video_only_url})")
+            st.code(
+                f'<iframe src="{video_only_url}" width="100%" height="700" frameborder="0" allow="autoplay; fullscreen" allowfullscreen></iframe>',
+                language="html",
+            )
+            analytics_query = urlencode({
+                "mode": "drone_embed",
+                "traffic_video": saved_id,
+                "webhook": webhook_url,
+                "camera": camera_id,
+            })
+            st.markdown(f"[Open video with analytics]({app_base}/?{analytics_query})")
         return
 
     st.info("No completed drone traffic videos with saved analytics are available yet.")
