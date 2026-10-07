@@ -100,6 +100,15 @@ def _read_analytics_csv(path, columns, modified_ns, file_size):
     return pd.read_csv(path, usecols=list(columns))
 
 
+def _playback_cache_signature(paths):
+    signature = []
+    for path in paths:
+        if path.is_file():
+            stat = path.stat()
+            signature.append([path.name, stat.st_size, stat.st_mtime_ns])
+    return signature
+
+
 def _valid_webhook_url(value):
     """Accept public HTTPS webhook URLs and reject malformed/private IP targets."""
     try:
@@ -164,6 +173,31 @@ def _render_saved_analytics(summary, video=None, component_key=None,
     detections_csv = OUTPUTS / f"{video_id}_traffic_detections.csv"
     tracks_csv = OUTPUTS / f"{video_id}_direction_tracks.csv"
     has_frame_data = detections_csv.is_file() or tracks_csv.is_file()
+    playback_cache = OUTPUTS / f"{video_id}_playback_frames.json"
+    cache_signature = _playback_cache_signature((detections_csv, tracks_csv))
+    if video_only and cache_signature and playback_cache.is_file():
+        try:
+            cached_frames = json.loads(playback_cache.read_text(encoding="utf-8"))
+            if cached_frames.get("source_signature") == cache_signature:
+                video_url = _streamlit_media_url(video) if video else None
+                if video_url:
+                    _video_with_analytics(
+                        video_url=video_url,
+                        frames=cached_frames.get("frames", []),
+                        fps=float(cached_frames.get("fps", 30) or 30),
+                        duration=float(cached_frames.get("duration", 0) or 0),
+                        key=component_key or f"drone-video-{video_id}",
+                        loop=True,
+                        display_analytics=False,
+                        webhook_enabled=bool(webhook_url and _valid_webhook_url(webhook_url)),
+                        webhook_url=webhook_url,
+                        camera_id=camera_id or video_id,
+                        source_video=video_id,
+                        webhook_interval_seconds=30,
+                    )
+                    return
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            pass
     if is_detection_summary or has_frame_data:
         vehicle_count = int(snapshot.get("observation_count", vehicle_count) or 0)
         if not video_only:
@@ -273,6 +307,22 @@ def _render_saved_analytics(summary, video=None, component_key=None,
                             "uncertain": motion.get("uncertain"),
                             "directions": motion.get("directions", {}),
                         })
+
+                    cache_payload = {
+                        "source_signature": cache_signature,
+                        "fps": float(fps),
+                        "duration": float(max_frame / fps) if fps else 0.0,
+                        "frames": frame_payload,
+                    }
+                    cache_tmp = playback_cache.with_name(playback_cache.name + ".tmp")
+                    try:
+                        cache_tmp.write_text(json.dumps(cache_payload, separators=(",", ":")), encoding="utf-8")
+                        cache_tmp.replace(playback_cache)
+                    except OSError:
+                        try:
+                            cache_tmp.unlink(missing_ok=True)
+                        except OSError:
+                            pass
 
                     video_url = _streamlit_media_url(video) if video else None
                     if video_url:
