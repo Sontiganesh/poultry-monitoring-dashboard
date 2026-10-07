@@ -1,5 +1,4 @@
 import json
-import datetime
 import ipaddress
 import os
 import re
@@ -8,7 +7,6 @@ from urllib.parse import unquote, urlencode, urlsplit, urlunsplit
 
 import streamlit as st
 import streamlit.components.v1 as components
-from src.webhook import WebhookDispatcher
 
 PLATFORM_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = PLATFORM_ROOT / "results" / "drone_traffic"
@@ -94,11 +92,19 @@ def _streamlit_media_url(video):
         return None
 
 
+@st.cache_data(show_spinner=False)
+def _read_analytics_csv(path, columns, modified_ns, file_size):
+    """Cache saved playback rows so webhook-triggered reruns stay lightweight."""
+    import pandas as pd
+
+    return pd.read_csv(path, usecols=list(columns))
+
+
 def _valid_webhook_url(value):
-    """Accept public HTTP(S) webhook URLs and reject malformed/private IP targets."""
+    """Accept public HTTPS webhook URLs and reject malformed/private IP targets."""
     try:
         parsed = urlsplit(str(value or "").strip())
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             return False
         try:
             address = ipaddress.ip_address(parsed.hostname)
@@ -123,46 +129,6 @@ def _normalize_webhook_camera(webhook_url, camera_id):
     except ValueError:
         pass
     return value, camera_id
-
-
-def _dispatch_playback_webhook(video_id, camera_id, webhook_url, update):
-    """Forward a playback-time snapshot once per component update."""
-    if not webhook_url or not isinstance(update, dict) or not _valid_webhook_url(webhook_url):
-        return
-    try:
-        sequence = int(update.get("sequence", 0))
-    except (TypeError, ValueError):
-        return
-    sequence_key = f"drone_webhook_sequence_{video_id}_{camera_id}_{abs(hash(webhook_url))}"
-    if sequence <= int(st.session_state.get(sequence_key, 0)):
-        return
-    st.session_state[sequence_key] = sequence
-
-    dispatcher_key = f"drone_webhook_dispatcher_{abs(hash(webhook_url))}"
-    dispatcher = st.session_state.get(dispatcher_key)
-    if dispatcher is None:
-        dispatcher = WebhookDispatcher(camera_id=camera_id or video_id)
-        st.session_state[dispatcher_key] = dispatcher
-    dispatcher.camera_id = camera_id or video_id
-
-    playback_time = update.get("playback_time_sec")
-    payload = {
-        "event": "drone_traffic_playback_snapshot",
-        "camera_id": camera_id or video_id,
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "source_video": video_id,
-        "playback_time_sec": round(float(playback_time), 2) if isinstance(playback_time, (int, float)) else None,
-        "frame_index": update.get("frame_index"),
-        "total_count": update.get("count", 0),
-        "vehicle_count": update.get("count", 0),
-        "class_counts": update.get("classes", {}),
-        "tracked_count": update.get("tracked"),
-        "moving_count": update.get("moving"),
-        "stationary_count": update.get("stationary"),
-        "uncertain_count": update.get("uncertain"),
-        "direction_counts": update.get("directions", {}),
-    }
-    dispatcher.dispatch(webhook_url, payload)
 
 
 def _render_saved_analytics(summary, video=None, component_key=None,
@@ -208,13 +174,25 @@ def _render_saved_analytics(summary, video=None, component_key=None,
             try:
                 import pandas as pd
                 if detections_csv.is_file():
-                    frame_data = pd.read_csv(detections_csv, usecols=["frame", "timestamp", "class_name"])
+                    source_csv = detections_csv
+                    frame_columns = ("frame", "timestamp", "class_name")
                 else:
                     # Older runs saved ByteTrack rows but not the detector CSV.
                     # Each track row is one vehicle observed in that frame.
-                    frame_data = pd.read_csv(tracks_csv, usecols=["frame", "timestamp", "track_id", "class_name"])
-                    if not frame_data.empty:
-                        frame_data["frame"] = frame_data["frame"].astype(int) - int(frame_data["frame"].min())
+                    source_csv = tracks_csv
+                    track_header = tuple(pd.read_csv(tracks_csv, nrows=0).columns)
+                    frame_columns = tuple(
+                        name for name in (
+                            "frame", "timestamp", "track_id", "class_name", "direction",
+                            "camera_compensation_reliable",
+                        ) if name in track_header
+                    )
+                source_stat = source_csv.stat()
+                frame_data = _read_analytics_csv(
+                    str(source_csv), frame_columns, source_stat.st_mtime_ns, source_stat.st_size
+                )
+                if not detections_csv.is_file() and not frame_data.empty:
+                    frame_data["frame"] = frame_data["frame"].astype(int) - int(frame_data["frame"].min())
                 if not frame_data.empty:
                     frame_data["frame"] = frame_data["frame"].astype(int)
                     if not detections_csv.is_file():
@@ -232,19 +210,32 @@ def _render_saved_analytics(summary, video=None, component_key=None,
                     per_frame = per_frame.reindex(range(max_frame + 1), fill_value=0)
                     per_frame.index.name = "Frame"
                     per_frame["Total vehicles in frame"] = per_frame.sum(axis=1)
-                    if fps <= 2:
-                        st.caption("Test1 analytics are sampled about once per second; the cards follow the playing video.")
-                    else:
-                        st.caption("Counts are detections visible in that individual frame. A vehicle can appear again in the next frame.")
+                    if not video_only:
+                        if fps <= 2:
+                            st.caption("Test1 analytics are sampled about once per second; the cards follow the playing video.")
+                        else:
+                            st.caption("Counts are detections visible in that individual frame. A vehicle can appear again in the next frame.")
                     tracks_by_frame = {}
                     tracked = None
                     if tracks_csv.is_file():
                         try:
-                            track_columns = set(pd.read_csv(tracks_csv, nrows=0).columns)
-                            usecols = [name for name in ("frame", "track_id", "direction", "class_name", "camera_compensation_reliable") if name in track_columns]
-                            tracked = pd.read_csv(tracks_csv, usecols=usecols)
-                            if not detections_csv.is_file() and not tracked.empty:
-                                tracked["frame"] = tracked["frame"].astype(int) - int(tracked["frame"].min())
+                            if not detections_csv.is_file() and "track_id" in frame_data.columns:
+                                tracked = frame_data
+                            else:
+                                track_header = tuple(pd.read_csv(tracks_csv, nrows=0).columns)
+                                track_columns = tuple(
+                                    name for name in (
+                                        "frame", "track_id", "direction", "class_name",
+                                        "camera_compensation_reliable",
+                                    ) if name in track_header
+                                )
+                                track_stat = tracks_csv.stat()
+                                tracked = _read_analytics_csv(
+                                    str(tracks_csv), track_columns,
+                                    track_stat.st_mtime_ns, track_stat.st_size,
+                                )
+                                if not detections_csv.is_file() and not tracked.empty:
+                                    tracked["frame"] = tracked["frame"].astype(int) - int(tracked["frame"].min())
                             span_by_track = tracked.groupby("track_id")["frame"].agg(lambda values: values.max() - values.min())
                             median_track_seconds = float(span_by_track.median()) / fps if not span_by_track.empty else 0.0
                             has_reliability = "camera_compensation_reliable" in tracked.columns
@@ -285,7 +276,7 @@ def _render_saved_analytics(summary, video=None, component_key=None,
 
                     video_url = _streamlit_media_url(video) if video else None
                     if video_url:
-                        playback_update = _video_with_analytics(
+                        _video_with_analytics(
                             video_url=video_url,
                             frames=frame_payload,
                             fps=fps,
@@ -294,10 +285,12 @@ def _render_saved_analytics(summary, video=None, component_key=None,
                             loop=True,
                             display_analytics=not video_only,
                             webhook_enabled=bool(webhook_url and _valid_webhook_url(webhook_url)),
+                            webhook_url=webhook_url,
+                            camera_id=camera_id or video_id,
+                            source_video=video_id,
                             webhook_interval_seconds=30,
                         )
                     else:
-                        playback_update = None
                         selected_frame = st.slider(
                             "Inspect frame",
                             min_value=0,
@@ -309,8 +302,7 @@ def _render_saved_analytics(summary, video=None, component_key=None,
                     if video_url and not video_only:
                         st.caption("The player shows saved detections and motion estimates for its current playback second.")
                     if video_url and webhook_url and not _valid_webhook_url(webhook_url) and not video_only:
-                        st.warning("Webhook URL must be a valid public HTTP or HTTPS endpoint.")
-                    _dispatch_playback_webhook(video_id, camera_id, webhook_url, playback_update)
+                        st.warning("Webhook URL must be a valid public HTTPS endpoint.")
                     if video_only:
                         return
                     if not video_url:
@@ -383,6 +375,9 @@ def _render_saved_analytics(summary, video=None, component_key=None,
                         loop=True,
                         display_analytics=False,
                         webhook_enabled=False,
+                        webhook_url="",
+                        camera_id=camera_id or video_id,
+                        source_video=video_id,
                         webhook_interval_seconds=30,
                     )
                 elif video:
@@ -486,7 +481,7 @@ def render_drone_embed(video_id, webhook_url="", camera_id="", video_only=False)
     if not video_only:
         st.title("🚁 Drone Traffic Analysis")
     if webhook_url and not _valid_webhook_url(webhook_url):
-        st.error("The webhook URL must be a valid public HTTP or HTTPS endpoint.")
+            st.error("The webhook URL must be a valid public HTTPS endpoint.")
         webhook_url = ""
     _render_saved_analytics(
         summary,
@@ -517,7 +512,7 @@ def render_drone_traffic():
         webhook_url, camera_id = _normalize_webhook_camera(webhook_url, camera_id)
         st.caption("The selected clip sends a playback snapshot immediately, then every 30 seconds while it plays. Enter the Webhook.site URL ending in its UUID; camera ID is passed separately.")
         if webhook_url and not _valid_webhook_url(webhook_url):
-            st.error("Webhook URL must be a valid public HTTP or HTTPS endpoint.")
+            st.error("Webhook URL must be a valid public HTTPS endpoint.")
 
     saved_videos = _saved_videos()
     if saved_videos:
@@ -534,7 +529,13 @@ def render_drone_traffic():
             key="drone_saved_video_choice",
         )
         saved_video, saved_summary = _result_paths(saved_id)
-        _render_saved_analytics(saved_summary, video=saved_video, component_key=f"drone-video-{saved_id}")
+        _render_saved_analytics(
+            saved_summary,
+            video=saved_video,
+            component_key=f"drone-video-{saved_id}",
+            webhook_url=webhook_url,
+            camera_id=camera_id,
+        )
         detections_csv = OUTPUTS / f"{saved_id}_traffic_detections.csv"
         if detections_csv.is_file():
             st.download_button(

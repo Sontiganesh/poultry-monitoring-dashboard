@@ -43,7 +43,9 @@
     let webhookEnabled = false;
     let webhookIntervalSeconds = 30;
     let lastWebhookSentAt = 0;
-    let webhookSequence = 0;
+    let webhookUrl = "";
+    let cameraId = "";
+    let sourceVideo = "";
 
     // Start demos immediately; muted playback is allowed by modern browsers.
     video.autoplay = true;
@@ -91,28 +93,37 @@
     }
     function sendPlaybackUpdate(force = false) {
       if (!webhookEnabled || video.readyState < 1) return;
+      if (!webhookUrl) return;
       const now = Date.now();
       if (!force && now - lastWebhookSentAt < webhookIntervalSeconds * 1000) return;
       lastWebhookSentAt = now;
       const frameIndex = Math.max(0, Math.min(frames.length - 1, Math.floor((video.currentTime || 0) * fps)));
       const frame = frames[frameIndex] || {};
-      window.parent.postMessage({
-        isStreamlitMessage: true,
-        type: "streamlit:setComponentValue",
-        dataType: "json",
-        value: {
-          sequence: ++webhookSequence,
-          playback_time_sec: Number((video.currentTime || 0).toFixed(2)),
-          frame_index: frameIndex,
-          count: frame.count ?? 0,
-          classes: frame.classes || {},
-          tracked: frame.tracked ?? null,
-          moving: frame.moving ?? null,
-          stationary: frame.stationary ?? null,
-          uncertain: frame.uncertain ?? null,
-          directions: frame.directions || {}
-        }
-      }, "*");
+      const payload = {
+        event: "drone_traffic_playback_snapshot",
+        camera_id: cameraId,
+        timestamp: new Date().toISOString(),
+        source_video: sourceVideo,
+        playback_time_sec: Number((video.currentTime || 0).toFixed(2)),
+        frame_index: frameIndex,
+        total_count: frame.count ?? 0,
+        vehicle_count: frame.count ?? 0,
+        class_counts: frame.classes || {},
+        tracked_count: frame.tracked ?? null,
+        moving_count: frame.moving ?? null,
+        stationary_count: frame.stationary ?? null,
+        uncertain_count: frame.uncertain ?? null,
+        direction_counts: frame.directions || {}
+      };
+      fetch(webhookUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {"Content-Type": "text/plain;charset=UTF-8"},
+        body: JSON.stringify(payload),
+        keepalive: true
+      }).catch(() => {
+        status.textContent = "Could not send the playback snapshot to the webhook.";
+      });
     }
     video.addEventListener("timeupdate", () => {
       renderAnalytics();
@@ -137,6 +148,9 @@
       displayAnalytics = args.display_analytics !== false;
       webhookEnabled = Boolean(args.webhook_enabled);
       webhookIntervalSeconds = Math.max(5, Number(args.webhook_interval_seconds) || 30);
+      webhookUrl = String(args.webhook_url || "");
+      cameraId = String(args.camera_id || "");
+      sourceVideo = String(args.source_video || "");
       frames = Array.isArray(args.frames) ? args.frames : [];
       fps = Number(args.fps) || 30;
       if (args.video_url && video.dataset.src !== args.video_url) {
