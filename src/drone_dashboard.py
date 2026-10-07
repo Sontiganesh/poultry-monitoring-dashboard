@@ -57,12 +57,12 @@ def _result_paths(video_id):
 
 
 def _saved_videos():
-    """Return saved analysis/demo clips whose IDs are safe for share links."""
+    """Return completed analyses whose IDs are safe for share links."""
     videos = {}
     for video in OUTPUTS.glob("*_traffic.mp4"):
         video_id = video.name[:-len("_traffic.mp4")]
         paths = _result_paths(video_id)
-        if paths[0] == video.resolve():
+        if paths[0] == video.resolve() and paths[1].is_file():
             videos[video_id] = video
     return videos
 
@@ -150,6 +150,7 @@ def render_drone_traffic(initial_webhook_url=""):
             "Choose a video to play with its analytics below",
             options=list(saved_videos),
             format_func=lambda video_id: video_id.replace("_", " ").title(),
+            index=(list(saved_videos).index("test1") if "test1" in saved_videos else 0),
             key="drone_saved_video_choice",
         )
         saved_video, saved_summary = _result_paths(saved_id)
