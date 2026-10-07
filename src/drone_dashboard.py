@@ -79,7 +79,7 @@ def _saved_videos():
 def _streamlit_media_url(video):
     """Register a local video with Streamlit and return its browser URL."""
     try:
-        from streamlit.runtime import runtime
+        import streamlit.runtime as runtime
         from streamlit.runtime.scriptrunner import get_script_run_ctx
 
         context = get_script_run_ctx()
