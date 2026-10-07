@@ -481,7 +481,7 @@ def render_drone_embed(video_id, webhook_url="", camera_id="", video_only=False)
     if not video_only:
         st.title("🚁 Drone Traffic Analysis")
     if webhook_url and not _valid_webhook_url(webhook_url):
-            st.error("The webhook URL must be a valid public HTTPS endpoint.")
+        st.error("The webhook URL must be a valid public HTTPS endpoint.")
         webhook_url = ""
     _render_saved_analytics(
         summary,
