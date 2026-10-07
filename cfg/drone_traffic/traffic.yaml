@@ -1,0 +1,172 @@
+reference_width: 1920
+reference_height: 1080
+occupancy_resolution_width: 480
+aggregation_interval_seconds: 10
+minimum_observation_duration_seconds: 3
+smoothing_window_seconds: 3
+ema_alpha: 0.15
+hysteresis: 0.01
+minimum_state_duration_seconds: 3
+minimum_detection_frames_in_window: 50
+# Ultralytics defaults max_det to 300. Dense frames already carry ~134 tracked
+# vehicles at a 0.25 score floor, and the lower floor ByteTrack needs for its
+# recovery stage pushes well past that, so an unraised cap would silently clip
+# detections and manufacture the very track losses we are trying to remove.
+max_detections: 600
+camera_motion:
+  enabled: false
+occupancy:
+  red_occupancy_pct: 60
+congestion:
+  weights:
+    occupancy: 0.6
+    speed: 0.4
+  thresholds:
+    green: 0.17
+    yellow: 0.70
+speed:
+  free_flow_kmh: 60
+  speed_window_seconds: 2
+  ground_homography: null
+# Ground-truth scale. ASSUMPTION: each carriageway is 7.0m wide (two 3.5m lanes).
+# Change road_width_m to the surveyed width and re-run - every km/h scales
+# linearly with it and every veh/km scales inversely, so a 10% width error is a
+# 10% speed error. Only used when ground_homography is null.
+scale:
+  road_width_m: 7.0
+  lanes_per_direction: 2
+  # Longitudinal correction, derived from observed car length, NOT surveyed.
+  # A first pass at correction 1.0 measured the median car at 1.03m against a
+  # 4.4m reference, so travel-direction distance was foreshortened 4.25x by the
+  # isotropic assumption on this oblique view. Applying it makes speed, segment
+  # length and density self-consistent with real vehicle sizes. Replace this and
+  # road_width_m with surveyed values when available; note that once the factor
+  # comes from car length, scale_diagnostics can no longer independently confirm
+  # it - only a known ground distance can.
+  longitudinal_correction: 4.25
+visualization:
+  show_boxes: true
+  show_ids: true
+  show_directions: false
+  show_trajectories: false
+  show_road_boundaries: true
+  show_traffic_lines: true
+  show_labels: true
+  traffic_line_thickness: 16
+segments:
+- segment_id: R1_A
+  subdivide_into: 4
+  road_id: R1
+  direction: A
+  travel_vector:
+  - -0.35
+  - -0.94
+  polygon:
+  - - 571
+    - 285
+  - - 671
+    - 337
+  - - 756
+    - 398
+  - - 822
+    - 496
+  - - 875
+    - 615
+  - - 891
+    - 749
+  - - 885
+    - 898
+  - - 861
+    - 1048
+  - - 1109
+    - 1072
+  - - 1115
+    - 902
+  - - 1089
+    - 721
+  - - 1035
+    - 555
+  - - 948
+    - 414
+  - - 844
+    - 302
+  - - 729
+    - 233
+  - - 619
+    - 185
+  centerline:
+  - - 595
+    - 235
+  - - 700
+    - 285
+  - - 800
+    - 350
+  - - 885
+    - 455
+  - - 955
+    - 585
+  - - 990
+    - 735
+  - - 1000
+    - 900
+  - - 985
+    - 1060
+- segment_id: R1_B
+  subdivide_into: 4
+  # Opposing carriageway: number 4..1 down the frame, mirroring R1_A's 1..4 so
+  # the two sides are not both numbered top-to-bottom.
+  # NOTE: this is a spatial mirror, not a travel-direction alignment. Measured
+  # motion has BOTH carriageways running down-frame (A: 37% down vs 4% up), which
+  # contradicts R1_A's travel_vector below and inflates A's counterflow counts.
+  # Resolve that travel_vector first; whether the numbering should then follow
+  # flow on both sides is a separate decision.
+  reverse_numbering: true
+  road_id: R1
+  direction: B
+  travel_vector:
+  - 0.25
+  - 0.97
+  polygon:
+  - - 750
+    - 319
+  - - 841
+    - 369
+  - - 926
+    - 452
+  - - 994
+    - 571
+  - - 1046
+    - 712
+  - - 1095
+    - 880
+  - - 1129
+    - 1069
+  - - 1351
+    - 1011
+  - - 1285
+    - 820
+  - - 1204
+    - 648
+  - - 1126
+    - 499
+  - - 1024
+    - 368
+  - - 909
+    - 271
+  - - 800
+    - 221
+  centerline:
+  - - 775
+    - 270
+  - - 875
+    - 320
+  - - 975
+    - 410
+  - - 1060
+    - 535
+  - - 1125
+    - 680
+  - - 1190
+    - 850
+  - - 1240
+    - 1040

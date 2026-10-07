@@ -12,3 +12,6 @@ env/
 .coverage
 htmlcov/
 output/
+
+# Generated drone traffic analytics
+results/drone_traffic/

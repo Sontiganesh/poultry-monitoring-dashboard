@@ -1,0 +1,25 @@
+# ByteTrack configuration for drone traffic footage.
+#
+# This file is passed straight to Ultralytics' ByteTrack implementation
+# (ultralytics/trackers/byte_tracker.py) - we do NOT reimplement tracking.
+# scripts/track.py can override any of these from the command line.
+#
+# Tuning notes for aerial vehicle footage, versus the Ultralytics defaults:
+#  * vehicles seen from a drone are small and often low-confidence, so
+#    track_high_thresh is kept low enough to admit them to the first
+#    association stage;
+#  * new_track_thresh is raised a little above track_high_thresh so brief
+#    false positives in tree/shadow clutter do not spawn permanent IDs;
+#  * track_buffer is increased because vehicles routinely disappear behind
+#    buildings, trees and overpasses for a second or more;
+#  * match_thresh is loosened slightly: fast drone ego-motion moves every box
+#    between frames, which lowers frame-to-frame IoU for otherwise good matches.
+
+tracker_type: bytetrack   # must stay bytetrack for this phase
+
+track_high_thresh: 0.25   # first association stage: detections above this
+track_low_thresh: 0.10    # second stage: recovers weak/occluded detections
+new_track_thresh: 0.35    # confidence needed to start a brand-new track ID
+track_buffer: 60          # frames a lost track survives (~2 s at 30 fps)
+match_thresh: 0.85        # IoU-based association threshold (higher = more permissive)
+fuse_score: true          # fold detection score into the association cost

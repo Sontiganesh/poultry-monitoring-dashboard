@@ -130,6 +130,15 @@ if mode == "embed":
 if os.path.exists("assets/logo.png"):
     st.sidebar.image("assets/logo.png", use_container_width=True)
 st.sidebar.title("Configuration")
+analytics_mode = st.sidebar.radio(
+    "Analytics mode",
+    ["Poultry / Smart Space", "Drone Traffic"],
+    key="analytics_mode",
+)
+if analytics_mode == "Drone Traffic":
+    from src.drone_dashboard import render_drone_traffic
+    render_drone_traffic()
+    st.stop()
 
 is_embedded = False
 auto_video_path = None

@@ -1,0 +1,31 @@
+# Pixel-space geometry must be calibrated for each camera/video resolution.
+observation_window: 30
+minimum_trajectory_length: 5
+minimum_displacement_px: 12
+minimum_detection_confidence: 0.15
+minimum_direction_confidence: 0.25
+max_occlusion_frames: 45
+smoothing_observations: 5
+direction_smoothing: 0.35
+trajectory_length: 30
+summary_interval_seconds: 60
+camera_motion:
+  enabled: true
+  features: 300
+  estimate_every_n_frames: 5
+  processing_width: 640
+  minimum_matches: 18
+  maximum_reprojection_error: 4.0
+# Optional polygon coordinates are [x,y] pixels. An empty list means unrestricted.
+road_segments: []
+# Example:
+# road_segments:
+#   - id: R1
+#     bounds: [[100,100],[900,100],[900,700],[100,700]]
+#     minimum_confidence: 0.25
+#     minimum_similarity: 0.65
+#     direction_a: {label: A, vector: [0,-1]}
+#     direction_b: {label: B, vector: [0,1]}
+intersections: []
+# Example intersection has entry_zones, exit_zones (polygons), and zone_vectors
+# mapping zone ids to outward travel vectors. Turn assignment requires a zone transition.
