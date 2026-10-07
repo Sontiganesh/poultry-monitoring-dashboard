@@ -1,6 +1,6 @@
 # Drone traffic module
 
-`runner.py` runs YOLO vehicle detection, ByteTrack tracking, camera motion compensation, direction estimation, calibrated road-segment analytics, and output generation. `src/drone_dashboard.py` lets a user upload a clip, configure the analytics webhook, watch the annotated result, and copy a reusable embed URL. `app.py` serves that result at `?mode=drone_embed&traffic_video=<result-id>`.
+`runner.py` runs YOLO vehicle detection, ByteTrack tracking, camera motion compensation, direction estimation, calibrated road-segment analytics, and output generation. `src/drone_dashboard.py` lets a user select a saved clip or upload a new one, watch it in a loop with analytics below, configure the analytics webhook, and copy a reusable embed URL. `app.py` serves that result at `?mode=drone_embed&traffic_video=<result-id>`.
 
 The bundled `cfg/drone_traffic/traffic.yaml` describes two directions for one camera view. Treat segment counts, speed, density, and congestion as view-specific estimates. Calibrate polygons and scale before using another camera view or treating values as operational measurements. Final-frame moving/stationary totals are snapshots; stationary does not prove that a vehicle is parked.
 

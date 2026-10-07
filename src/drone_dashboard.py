@@ -56,6 +56,68 @@ def _result_paths(video_id):
     return video, summary
 
 
+def _saved_videos():
+    """Return saved analysis/demo clips whose IDs are safe for share links."""
+    videos = {}
+    for video in OUTPUTS.glob("*_traffic.mp4"):
+        video_id = video.name[:-len("_traffic.mp4")]
+        paths = _result_paths(video_id)
+        if paths[0] == video.resolve():
+            videos[video_id] = video
+    return videos
+
+
+def _render_saved_analytics(summary):
+    """Show the summary shape available for either legacy or drone runs."""
+    if not summary.is_file():
+        st.caption("No analytics summary is saved for this clip.")
+        return
+    try:
+        payload = json.loads(summary.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        st.warning(f"Could not load the analysis summary: {exc}")
+        return
+
+    snapshot = payload.get("final_frame_analytics", {})
+    if snapshot:
+        st.caption("Counts below describe the final processed frame; stationary is a motion estimate, not proof that a vehicle is parked.")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Vehicles in final frame", snapshot.get("vehicle_count_final_frame", 0))
+        c2.metric("Moving", snapshot.get("moving_count", 0))
+        c3.metric("Stationary", snapshot.get("stationary_count", 0))
+        st.subheader("Direction and segment analytics")
+        st.json(snapshot.get("directions", {}))
+    else:
+        states = payload.get("final_segment_states", {})
+        if states:
+            st.subheader("Final segment analytics")
+            st.caption("Final-frame snapshot. Track IDs can fragment, so these values are not unique trip totals.")
+            rows = []
+            for segment, state in states.items():
+                rows.append({
+                    "Segment / direction": segment,
+                    "Vehicles": state.get("vehicle_count", 0),
+                    "Classes": json.dumps(state.get("class_counts", {}), sort_keys=True),
+                    "Moving / stationary": json.dumps(state.get("motion_counts", {}), sort_keys=True),
+                    "Speed km/h": state.get("speed_kmh"),
+                    "Occupancy %": state.get("occupancy_pct"),
+                    "Congestion": state.get("level", "unknown"),
+                })
+            st.dataframe(rows, hide_index=True, use_container_width=True)
+        counting = payload.get("counting_lines", {})
+        if counting:
+            with st.expander("Direction counts and flow"):
+                st.json(counting)
+
+    st.download_button(
+        "Download full analysis JSON",
+        summary.read_bytes(),
+        file_name=summary.name,
+        mime="application/json",
+        key=f"download-{summary.stem}",
+    )
+
+
 def render_drone_embed(video_id):
     """Read-only embed view for one completed drone analysis."""
     st.markdown("""<style>
@@ -69,28 +131,8 @@ def render_drone_embed(video_id):
         return
 
     st.title("🚁 Drone Traffic Analysis")
-    st.video(str(video))
-    if summary.is_file():
-        try:
-            payload = json.loads(summary.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            st.warning(f"Could not load the analysis summary: {exc}")
-            return
-        snapshot = payload.get("final_frame_analytics", {})
-        if snapshot:
-            st.caption("Counts below describe the final processed frame; stationary is a motion estimate, not proof that a vehicle is parked.")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Vehicles in final frame", snapshot.get("vehicle_count_final_frame", 0))
-            c2.metric("Moving", snapshot.get("moving_count", 0))
-            c3.metric("Stationary", snapshot.get("stationary_count", 0))
-            st.subheader("Direction and segment analytics")
-            st.json(snapshot.get("directions", {}))
-        st.download_button(
-            "Download full analysis JSON",
-            summary.read_bytes(),
-            file_name=summary.name,
-            mime="application/json",
-        )
+    st.video(str(video), loop=True)
+    _render_saved_analytics(summary)
 
 
 def render_drone_traffic(initial_webhook_url=""):
@@ -100,6 +142,24 @@ def render_drone_traffic(initial_webhook_url=""):
         "The bundled road polygons define two directions for one camera view. "
         "Use them only when they match your footage; calibrate other camera views first."
     )
+
+    saved_videos = _saved_videos()
+    if saved_videos:
+        st.subheader("Saved traffic videos")
+        saved_id = st.selectbox(
+            "Choose a video to play with its analytics below",
+            options=list(saved_videos),
+            format_func=lambda video_id: video_id.replace("_", " ").title(),
+            key="drone_saved_video_choice",
+        )
+        saved_video, saved_summary = _result_paths(saved_id)
+        st.video(str(saved_video), loop=True)
+        _render_saved_analytics(saved_summary)
+        app_base = _public_app_base_url()
+        if app_base:
+            query = urlencode({"mode": "drone_embed", "traffic_video": saved_id})
+            st.markdown(f"[Open or embed this looping video]({app_base}/?{query})")
+        st.divider()
 
     if not SCRIPT.is_file() or not MODEL.is_file():
         st.error("The drone traffic engine or vehicle model is missing.")
@@ -182,7 +242,7 @@ def render_drone_traffic(initial_webhook_url=""):
     intervals = OUTPUTS / f"{stem}_traffic_summary.csv"
     if video and video.is_file():
         st.subheader("Annotated video")
-        st.video(str(video))
+        st.video(str(video), loop=True)
 
         app_base = _public_app_base_url()
         if app_base:

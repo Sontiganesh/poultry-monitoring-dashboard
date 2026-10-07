@@ -4,7 +4,7 @@ Streamlit dashboard for poultry and smart-space analytics, with a drone traffic 
 
 ## Drone traffic mode
 
-Run the existing app and choose **Drone Traffic** under **Analytics mode**. Upload a video and select **Analyze video**. The result is saved on the server, then the page provides a stable video-and-analytics link plus an iframe snippet you can embed like the existing demos. The embed remains available while its output files remain on the server.
+Run the existing app and choose **Drone Traffic** under **Analytics mode**. Choose a saved traffic video to play it in a loop with its analytics directly underneath, or upload a video and select **Analyze video**. The result is saved on the server, then the page provides a stable video-and-analytics link plus an iframe snippet you can embed like the existing demos. The embed remains available while its output files remain on the server.
 
 The included road geometry describes two travel directions for one camera view. Use it only with matching footage. Calibrate road polygons and scale before analyzing a different view or treating segment and speed values as operational measurements.
 
