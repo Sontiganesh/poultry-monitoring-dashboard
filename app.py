@@ -141,7 +141,7 @@ analytics_mode = st.sidebar.radio(
 )
 if analytics_mode == "Drone Traffic":
     from src.drone_dashboard import render_drone_traffic
-    render_drone_traffic(initial_webhook_url=url_webhook)
+    render_drone_traffic()
     st.stop()
 
 is_embedded = False
