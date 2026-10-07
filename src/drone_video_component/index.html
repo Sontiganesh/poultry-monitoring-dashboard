@@ -85,6 +85,9 @@
     video.addEventListener("loadedmetadata", () => {
       if (loopEnabled) video.loop = true;
       renderAnalytics();
+      video.play().catch(() => {
+        status.textContent = "Press play to start the video; analytics follow its playback time.";
+      });
     });
     video.addEventListener("error", () => { status.textContent = "This video could not be loaded."; });
     window.addEventListener("message", (event) => {
