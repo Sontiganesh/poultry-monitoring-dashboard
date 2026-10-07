@@ -117,6 +117,10 @@ img {{ max-width:100%; max-height:100%; object-fit:contain; }}
     )
     st.stop()
 
+if mode == "drone_embed":
+    from src.drone_dashboard import render_drone_embed
+    render_drone_embed(query_params.get("traffic_video", ""))
+    st.stop()
 if mode == "embed":
     st.markdown("""<style>
     [data-testid="stSidebar"] { display: none !important; }
@@ -137,7 +141,7 @@ analytics_mode = st.sidebar.radio(
 )
 if analytics_mode == "Drone Traffic":
     from src.drone_dashboard import render_drone_traffic
-    render_drone_traffic()
+    render_drone_traffic(initial_webhook_url=url_webhook)
     st.stop()
 
 is_embedded = False

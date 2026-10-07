@@ -54,6 +54,55 @@ def _mapped_bbox(matrix, box):
     return float(p[:,0].min()),float(p[:,1].min()),float(p[:,0].max()),float(p[:,1].max())
 
 
+def _summarize_final_frame(current_states):
+    """Aggregate per-segment final-frame measurements by travel direction."""
+    directions = {}
+    all_classes = Counter()
+    total_vehicles = total_moving = total_stationary = 0
+    for (segment_id, direction), state in sorted(current_states.items()):
+        direction = str(direction)
+        item = directions.setdefault(direction, {
+            "vehicle_count_final_frame": 0,
+            "moving_count": 0,
+            "stationary_count": 0,
+            "class_counts": Counter(),
+            "segments": {},
+        })
+        vehicle_count = int(state.get("vehicle_count", 0))
+        classes = {str(name): int(count) for name, count in (state.get("class_counts") or {}).items()}
+        motion = {str(name): int(count) for name, count in (state.get("motion_counts") or {}).items()}
+        moving_count = sum(count for name, count in motion.items() if name not in ("stationary", "unknown"))
+        stationary_count = int(state.get("stationary_count", motion.get("stationary", 0)))
+        item["vehicle_count_final_frame"] += vehicle_count
+        item["moving_count"] += moving_count
+        item["stationary_count"] += stationary_count
+        item["class_counts"].update(classes)
+        item["segments"][str(segment_id)] = {
+            "vehicle_count": vehicle_count,
+            "class_counts": classes,
+            "moving_count": moving_count,
+            "stationary_count": stationary_count,
+            "motion_counts": motion,
+            "average_speed_kmh": state.get("average_speed_kmh"),
+            "congestion_level": state.get("level"),
+            "congestion_score": state.get("score"),
+        }
+        all_classes.update(classes)
+        total_vehicles += vehicle_count
+        total_moving += moving_count
+        total_stationary += stationary_count
+
+    for item in directions.values():
+        item["class_counts"] = dict(item["class_counts"])
+    return {
+        "vehicle_count_final_frame": total_vehicles,
+        "moving_count": total_moving,
+        "stationary_count": total_stationary,
+        "vehicle_class_counts": dict(all_classes),
+        "directions": directions,
+        "count_basis": "vehicles assigned to road segments in the final processed frame; not unique trip totals",
+        "stationary_note": "stationary is a motion classification and does not confirm a parked vehicle",
+    }
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--source", required=True)
@@ -340,7 +389,7 @@ def main():
                 metrics={**state,"vehicle_count":n,"class_counts":dict(class_counts[key]),
                          "data_quality":quality,"road_id":seg.get("road_id",sid),"direction":direct,
                          "entry_count":interval_entries[key],"exit_count":interval_exits[key],
-                         "density_veh_per_km_lane":density,"segment_length_m":length_m,
+                         "density_veh_per_km_lane":density,"segment_length_m":length_m,"average_speed_kmh":speed_avg,
                          "lanes":lanes,"flow_veh_per_h":flow,
                          "motion_counts":motion,"counterflow_count":int(counterflow[key]),
                          "dominant_motion":max(moving,key=moving.get) if moving else "none",
@@ -439,19 +488,22 @@ def main():
             "Density assumes scale.lanes_per_direction lanes uniformly; it is veh/km/lane only if that count is right for every section.",
             "No manually labelled traffic ground truth was supplied, so congestion accuracy is not claimed.",
             "Counts and occupancy inherit detector misses, box overlap, and ByteTrack fragmentation."]}
+    final["source_video"] = os.environ.get("DRONE_SOURCE_FILENAME") or source.name
+    final["final_frame_analytics"] = _summarize_final_frame(current_states)
     (out/f"{stem}_traffic_summary.json").write_text(json.dumps(final,indent=2),encoding="utf-8")
     # Send the completed analysis through the platform's existing webhook publisher.
     webhook_url = os.environ.get("DRONE_TRAFFIC_WEBHOOK_URL") or os.environ.get("WEBHOOK_URL")
     if webhook_url:
         webhook = WebhookDispatcher(camera_id=os.environ.get("DRONE_CAMERA_ID") or source.stem)
-        webhook.dispatch(webhook_url, {
+        delivered, status_code, status_desc = webhook.dispatch(webhook_url, {
             "event": "drone_traffic_summary",
             "timestamp_sec": round(frame_idx / fps, 2),
-            "source_video": source.name,
+            "source_video": final["source_video"],
             "frames_processed": frame_idx,
             "tracked_ids": len(all_track_ids),
             "processing_fps": final["processing_fps"],
             "segment_count": len(current_states),
+            "final_frame_analytics": final["final_frame_analytics"],
             "final_segment_states": final["final_segment_states"],
             "road_segment_events": final["road_segment_events"],
             "counting_lines": final["counting_lines"],
@@ -459,6 +511,10 @@ def main():
             "speed_available": final["speed_available"],
             "speed_basis": final["speed_basis"],
         }, sync=True)
+        if delivered:
+            print(f"[DRONE WEBHOOK] sent successfully (status={status_code})")
+        else:
+            print(f"[DRONE WEBHOOK] delivery failed (status={status_code or 'N/A'}): {status_desc}")
     print(f"Annotated video: {output_video if writer else 'not saved'}")
     print(f"Per-frame measurements: {frame_csv}\nInterval summary: {interval_csv}\nJSON summary: {out/f'{stem}_traffic_summary.json'}")
     print(f"Processed {frame_idx} frames at {final['processing_fps']} FPS; speed calibration available={final['speed_available']}")
