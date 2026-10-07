@@ -187,19 +187,14 @@ def _render_saved_analytics(summary, video=None, component_key=None):
 
                     video_url = _streamlit_media_url(video) if video else None
                     if video_url:
-                        playback_time = _video_with_analytics(
+                        _video_with_analytics(
                             video_url=video_url,
                             frames=frame_payload,
                             fps=fps,
                             duration=max_frame / fps,
                             key=component_key or f"drone-video-{video_id}",
-                            default=0.0,
                             loop=True,
                         )
-                        try:
-                            selected_frame = min(max_frame, max(0, int(float(playback_time or 0) * fps)))
-                        except (TypeError, ValueError):
-                            selected_frame = 0
                     else:
                         selected_frame = st.slider(
                             "Inspect frame",
@@ -210,14 +205,17 @@ def _render_saved_analytics(summary, video=None, component_key=None):
                         )
                         st.video(str(video), loop=True) if video else None
                     st.line_chart(per_frame[["Total vehicles in frame"]], height=220)
-                    class_row = per_frame.loc[selected_frame].drop(labels=["Total vehicles in frame"])
-                    detected_classes = [(name, int(value)) for name, value in class_row.items() if value]
-                    frame_cols = st.columns(min(6, max(1, len(detected_classes) + 1)))
-                    frame_cols[0].metric("Vehicles in this frame", int(per_frame.loc[selected_frame, "Total vehicles in frame"]))
-                    for col, (name, value) in zip(frame_cols[1:], detected_classes):
-                        col.metric(name.replace("_", " ").title(), value)
+                    if video_url:
+                        st.caption("The player shows saved detections and motion estimates for its current playback second.")
+                    else:
+                        class_row = per_frame.loc[selected_frame].drop(labels=["Total vehicles in frame"])
+                        detected_classes = [(name, int(value)) for name, value in class_row.items() if value]
+                        frame_cols = st.columns(min(6, max(1, len(detected_classes) + 1)))
+                        frame_cols[0].metric("Vehicles in this frame", int(per_frame.loc[selected_frame, "Total vehicles in frame"]))
+                        for col, (name, value) in zip(frame_cols[1:], detected_classes):
+                            col.metric(name.replace("_", " ").title(), value)
 
-                    if tracks_csv.is_file():
+                    if tracks_csv.is_file() and not video_url:
                         try:
                             tracked = pd.read_csv(
                                 tracks_csv,
@@ -245,11 +243,12 @@ def _render_saved_analytics(summary, video=None, component_key=None):
                             st.info(f"Motion uses camera compensation marked reliable on {comp_pct:.1f}% of tracked observations. Track IDs last a median {median_track_seconds:.2f} seconds, so counts are only a frame snapshot—not unique trips. ‘Stationary’ means low movement; a queue stop cannot be confirmed as parked.")
                         except (ImportError, OSError, ValueError, KeyError) as exc:
                             st.warning(f"Could not load the saved motion estimates: {exc}")
-                    else:
+                    elif not tracks_csv.is_file() and not video_url:
                         st.info("Moving/stationary and direction snapshots need the saved ByteTrack motion results.")
 
-                    st.markdown("**Segment blockage outlook**")
-                    st.caption("No 30-second or 1-minute forecast yet. The video changes camera views and the old road sections drifted off the roadway. Calibrated segment boundaries and sustained occupancy history are needed to estimate a time to blockage.")
+                    if not video_url:
+                        st.markdown("**Segment blockage outlook**")
+                        st.caption("No 30-second or 1-minute forecast yet. The video changes camera views and the old road sections drifted off the roadway. Calibrated segment boundaries and sustained occupancy history are needed to estimate a time to blockage.")
 
                     with st.expander("Whole-video detection totals"):
                         st.caption("A sum of detections across the entire clip; repeated sightings of the same vehicle are included.")

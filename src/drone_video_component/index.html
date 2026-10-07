@@ -5,34 +5,82 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     html, body { margin: 0; padding: 0; font-family: sans-serif; color: #202124; }
-    video { display: block; width: 100%; max-height: 68vh; background: #111; border-radius: 8px; }
+    video { display: block; width: 100%; max-height: 54vh; background: #111; border-radius: 8px; }
     .status { padding: 6px 2px; color: #5f6368; font-size: 13px; }
+    .summary { margin-top: 10px; }
+    .summary h3 { margin: 8px 0; font-size: 18px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 8px; }
+    .card { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+    .label { color: #5f6368; font-size: 12px; }
+    .value { margin-top: 3px; font-size: 22px; font-weight: 650; }
+    .classes, .notes { margin-top: 9px; color: #5f6368; font-size: 13px; }
   </style>
 </head>
 <body>
   <video id="video" controls playsinline></video>
   <div class="status" id="status">Loading video…</div>
+  <section class="summary" aria-live="polite">
+    <h3>Traffic at this moment</h3>
+    <div class="cards" id="cards"></div>
+    <div class="classes" id="classes"></div>
+    <div class="notes" id="directions"></div>
+    <div class="notes">Stationary vehicles may be queued; this clip cannot reliably confirm parking. Segment blockage forecasts are unavailable until road sections are calibrated for this camera.</div>
+  </section>
   <script>
     const video = document.getElementById("video");
     const status = document.getElementById("status");
-    let lastSent = -1;
+    const cards = document.getElementById("cards");
+    const classLine = document.getElementById("classes");
+    const directionLine = document.getElementById("directions");
+    let frames = [];
+    let fps = 30;
     let loopEnabled = true;
+    let lastHeight = 0;
 
-    function send(type, extra = {}) {
-      window.parent.postMessage({isStreamlitMessage: true, type, ...extra}, "*");
+    function sendHeight() {
+      const height = document.documentElement.scrollHeight + 8;
+      if (height === lastHeight) return;
+      lastHeight = height;
+      window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setFrameHeight", height}, "*");
     }
-    function setValue(seconds, force = false) {
-      const rounded = Math.floor(Number(seconds) || 0);
-      if (!force && rounded === lastSent) return;
-      lastSent = rounded;
-      send("streamlit:setComponentValue", {value: Number(seconds) || 0, dataType: "json"});
+    function renderAnalytics() {
+      const frameIndex = Math.max(0, Math.min(frames.length - 1, Math.floor((video.currentTime || 0) * fps)));
+      const frame = frames[frameIndex] || {};
+      const items = [
+        ["Vehicles visible", frame.count ?? 0],
+        ["Moving", frame.moving ?? "Not measured"],
+        ["Stationary", frame.stationary ?? "Not measured"],
+        ["Tracked", frame.tracked ?? "Not measured"],
+      ];
+      if (frame.tracked !== null && frame.tracked !== undefined) items.push(["Parked", "Cannot tell"]);
+      if (frame.uncertain !== null && frame.uncertain !== undefined) items.push(["Uncertain", frame.uncertain]);
+      cards.replaceChildren(...items.map(([label, value]) => {
+        const card = document.createElement("div");
+        card.className = "card";
+        const title = document.createElement("div");
+        title.className = "label";
+        title.textContent = label;
+        const number = document.createElement("div");
+        number.className = "value";
+        number.textContent = value;
+        card.append(title, number);
+        return card;
+      }));
+      const classEntries = Object.entries(frame.classes || {}).map(([name, count]) => `${name.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase())} ${count}`);
+      classLine.textContent = classEntries.length ? `Vehicle classes: ${classEntries.join(" · ")}` : "Vehicle classes: none detected in this frame";
+      const directions = Object.entries(frame.directions || {}).map(([name, count]) => `${name} ${count}`);
+      directionLine.textContent = frame.tracked === null || frame.tracked === undefined
+        ? "Motion and direction snapshots are not available for this video."
+        : `Screen direction: ${directions.length ? directions.join(" · ") : "no confident direction in this frame"}`;
+      const seconds = video.currentTime || 0;
       status.textContent = `Playback time ${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")} · analytics update with the playing frame`;
+      sendHeight();
     }
-    video.addEventListener("timeupdate", () => setValue(video.currentTime));
-    video.addEventListener("seeked", () => setValue(video.currentTime, true));
+    video.addEventListener("timeupdate", renderAnalytics);
+    video.addEventListener("seeked", renderAnalytics);
     video.addEventListener("loadedmetadata", () => {
       if (loopEnabled) video.loop = true;
-      setValue(video.currentTime, true);
+      renderAnalytics();
     });
     video.addEventListener("error", () => { status.textContent = "This video could not be loaded."; });
     window.addEventListener("message", (event) => {
@@ -41,15 +89,19 @@
       const args = message.args;
       loopEnabled = Boolean(args.loop);
       video.loop = loopEnabled;
+      frames = Array.isArray(args.frames) ? args.frames : [];
+      fps = Number(args.fps) || 30;
       if (args.video_url && video.dataset.src !== args.video_url) {
         video.pause();
         video.dataset.src = args.video_url;
         video.src = args.video_url;
         video.load();
       }
+      renderAnalytics();
     });
-    send("streamlit:componentReady", {apiVersion: 1});
-    send("streamlit:setFrameHeight", {height: 520});
+    window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1}, "*");
+    new ResizeObserver(sendHeight).observe(document.body);
+    sendHeight();
   </script>
 </body>
 </html>
