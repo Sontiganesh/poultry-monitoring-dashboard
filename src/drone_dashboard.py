@@ -136,18 +136,30 @@ def _render_saved_analytics(summary, video=None, component_key=None):
                 else:
                     # Older runs saved ByteTrack rows but not the detector CSV.
                     # Each track row is one vehicle observed in that frame.
-                    frame_data = pd.read_csv(tracks_csv, usecols=["frame", "track_id", "class_name"])
+                    frame_data = pd.read_csv(tracks_csv, usecols=["frame", "timestamp", "track_id", "class_name"])
                     if not frame_data.empty:
                         frame_data["frame"] = frame_data["frame"].astype(int) - int(frame_data["frame"].min())
                 if not frame_data.empty:
                     frame_data["frame"] = frame_data["frame"].astype(int)
+                    if not detections_csv.is_file():
+                        frame_count = int(frame_data["frame"].nunique())
+                        sampled_times = frame_data.drop_duplicates("frame").sort_values("frame")["timestamp"].astype(float)
+                        sample_step = sampled_times.diff().median() if len(sampled_times) > 1 else 0
+                        if sample_step and sample_step > 0:
+                            fps = round(1.0 / float(sample_step), 2)
+                        else:
+                            fps = float(payload.get("source_fps", 30) or 30)
+                    else:
+                        fps = float(payload.get("source_fps", 30) or 30)
                     per_frame = frame_data.groupby(["frame", "class_name"]).size().unstack(fill_value=0)
                     max_frame = max(frame_count - 1, int(per_frame.index.max()))
                     per_frame = per_frame.reindex(range(max_frame + 1), fill_value=0)
                     per_frame.index.name = "Frame"
                     per_frame["Total vehicles in frame"] = per_frame.sum(axis=1)
-                    st.caption("Counts are detections visible in that individual frame. A vehicle can appear again in the next frame.")
-                    fps = float(payload.get("source_fps", 30) or 30)
+                    if fps <= 2:
+                        st.caption("Test1 analytics are sampled about once per second; the cards follow the playing video.")
+                    else:
+                        st.caption("Counts are detections visible in that individual frame. A vehicle can appear again in the next frame.")
                     tracks_by_frame = {}
                     tracked = None
                     if tracks_csv.is_file():
