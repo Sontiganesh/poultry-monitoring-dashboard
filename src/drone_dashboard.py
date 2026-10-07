@@ -170,6 +170,24 @@ def _render_saved_analytics(summary, video=None, component_key=None,
     is_track_summary = snapshot.get("count_basis") == "filtered_track_ids"
     is_detection_summary = snapshot.get("count_basis") == "detection_observations"
     video_id = summary.name.removesuffix("_traffic_summary.json")
+    full_summary = payload.get("full_inference_summary", {})
+    track_quality = payload.get("tracking_quality", {})
+    final_segments = payload.get("final_segment_states", {})
+    webhook_summary = {
+        "source_video": payload.get("source_video") or full_summary.get("video") or payload.get("source") or video_id,
+        "frames_processed": payload.get("frames_processed") or snapshot.get("frames_processed") or full_summary.get("frames_processed"),
+        "tracked_ids": track_quality.get("track_ids", payload.get("tracked_ids")),
+        "processing_fps": payload.get("processing_fps", full_summary.get("processing_fps")),
+        "segment_count": payload.get("segment_count", len(final_segments)),
+        "final_frame_analytics": payload.get("final_frame_analytics", {}),
+        "final_segment_states": final_segments,
+        "road_segment_events": payload.get("road_segment_events", {}),
+        "counting_lines": payload.get("counting_lines", {}),
+        "tracking_quality": track_quality,
+        "speed_available": payload.get("speed_available", bool(payload.get("speed_basis"))),
+        "speed_basis": payload.get("speed_basis"),
+        "analysis_details": full_summary if isinstance(full_summary, dict) else {},
+    }
     detections_csv = OUTPUTS / f"{video_id}_traffic_detections.csv"
     tracks_csv = OUTPUTS / f"{video_id}_direction_tracks.csv"
     has_frame_data = detections_csv.is_file() or tracks_csv.is_file()
@@ -193,6 +211,7 @@ def _render_saved_analytics(summary, video=None, component_key=None,
                         webhook_url=webhook_url,
                         camera_id=camera_id or video_id,
                         source_video=video_id,
+                        traffic_summary=webhook_summary,
                         webhook_interval_seconds=30,
                     )
                     return
@@ -338,6 +357,7 @@ def _render_saved_analytics(summary, video=None, component_key=None,
                             webhook_url=webhook_url,
                             camera_id=camera_id or video_id,
                             source_video=video_id,
+                            traffic_summary=webhook_summary,
                             webhook_interval_seconds=30,
                         )
                     else:
@@ -428,6 +448,7 @@ def _render_saved_analytics(summary, video=None, component_key=None,
                         webhook_url="",
                         camera_id=camera_id or video_id,
                         source_video=video_id,
+                        traffic_summary=webhook_summary,
                         webhook_interval_seconds=30,
                     )
                 elif video:

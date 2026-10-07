@@ -43,9 +43,11 @@
     let webhookEnabled = false;
     let webhookIntervalSeconds = 30;
     let lastWebhookSentAt = 0;
+    let summarySent = false;
     let webhookUrl = "";
     let cameraId = "";
     let sourceVideo = "";
+    let trafficSummary = {};
 
     // Start demos immediately; muted playback is allowed by modern browsers.
     video.autoplay = true;
@@ -126,6 +128,27 @@
         status.textContent = "Could not send the playback snapshot to the webhook.";
       });
     }
+    function sendTrafficSummary() {
+      if (!webhookEnabled || !webhookUrl || video.readyState < 1 || summarySent) return;
+      const payload = {
+        ...trafficSummary,
+        event: "drone_traffic_summary",
+        camera_id: cameraId,
+        timestamp: new Date().toISOString(),
+        timestamp_sec: Number((video.duration || video.currentTime || 0).toFixed(2)),
+        source_video: trafficSummary.source_video || sourceVideo
+      };
+      summarySent = true;
+      fetch(webhookUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {"Content-Type": "text/plain;charset=UTF-8"},
+        body: JSON.stringify(payload),
+        keepalive: true
+      }).catch(() => {
+        status.textContent = "Could not send the traffic summary to the webhook.";
+      });
+    }
     video.addEventListener("timeupdate", () => {
       renderAnalytics();
       sendPlaybackUpdate();
@@ -134,6 +157,7 @@
     video.addEventListener("loadedmetadata", () => {
       if (loopEnabled) video.loop = true;
       renderAnalytics();
+      sendTrafficSummary();
       sendPlaybackUpdate(true);
       video.play().catch(() => {
         status.textContent = "Press play to start the video; analytics follow its playback time.";
@@ -151,7 +175,10 @@
       webhookIntervalSeconds = Math.max(5, Number(args.webhook_interval_seconds) || 30);
       webhookUrl = String(args.webhook_url || "");
       cameraId = String(args.camera_id || "");
-      sourceVideo = String(args.source_video || "");
+      const nextSourceVideo = String(args.source_video || "");
+      if (nextSourceVideo !== sourceVideo) summarySent = false;
+      sourceVideo = nextSourceVideo;
+      trafficSummary = args.traffic_summary && typeof args.traffic_summary === "object" ? args.traffic_summary : {};
       frames = Array.isArray(args.frames) ? args.frames : [];
       fps = Number(args.fps) || 30;
       if (args.video_url && video.dataset.src !== args.video_url) {
@@ -161,6 +188,10 @@
         video.load();
       }
       renderAnalytics();
+      if (video.readyState >= 1) {
+        sendTrafficSummary();
+        sendPlaybackUpdate(true);
+      }
     });
     window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1}, "*");
     new ResizeObserver(sendHeight).observe(document.body);
