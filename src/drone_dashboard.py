@@ -240,7 +240,11 @@ def render_drone_traffic():
             "Choose a video to play with its analytics below",
             options=list(saved_videos),
             format_func=lambda video_id: video_id.replace("_", " ").title(),
-            index=(list(saved_videos).index("test1") if "test1" in saved_videos else 0),
+            index=(
+                list(saved_videos).index("himachal_kullu_bypass")
+                if "himachal_kullu_bypass" in saved_videos
+                else list(saved_videos).index("test1") if "test1" in saved_videos else 0
+            ),
             key="drone_saved_video_choice",
         )
         saved_video, saved_summary = _result_paths(saved_id)
