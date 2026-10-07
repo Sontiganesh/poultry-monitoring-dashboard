@@ -46,13 +46,28 @@ def _result_paths(video_id):
 
 
 def _saved_videos():
-    """Return completed analyses whose IDs are safe for share links."""
+    """Return completed, browser-playable analyses with safe share-link IDs."""
     videos = {}
     for video in OUTPUTS.glob("*_traffic.mp4"):
         video_id = video.name[:-len("_traffic.mp4")]
         paths = _result_paths(video_id)
-        if paths[0] == video.resolve() and paths[1].is_file():
-            videos[video_id] = video
+        if paths[0] != video.resolve() or not paths[1].is_file():
+            continue
+        capture = None
+        try:
+            import cv2
+            capture = cv2.VideoCapture(str(video))
+            if not capture.isOpened():
+                continue
+            fourcc = int(capture.get(cv2.CAP_PROP_FOURCC))
+            codec = bytes((fourcc >> (8 * index)) & 0xFF for index in range(4)).decode("ascii", "ignore").lower()
+            if codec in {"h264", "avc1"}:
+                videos[video_id] = video
+        except (ImportError, OSError, ValueError):
+            continue
+        finally:
+            if capture is not None:
+                capture.release()
     return videos
 
 
