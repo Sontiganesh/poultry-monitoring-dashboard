@@ -93,16 +93,48 @@ def _render_saved_analytics(summary):
         moving += sum(int(n or 0) for k, n in motion.items() if k not in {"stationary", "unknown"})
         stationary += int(motion.get("stationary", 0) or 0)
     if not states and snapshot:
-        counts = snapshot.get("class_counts", {})
+        counts = snapshot.get("class_counts", snapshot.get("vehicle_class_counts", {}))
         moving = snapshot.get("moving_count", 0)
         stationary = snapshot.get("stationary_count", 0)
     vehicle_count = sum(int(n or 0) for n in counts.values())
-    st.subheader("Traffic at a glance")
-    st.caption("Counts are a snapshot from the final processed frame; stationary is a motion estimate, not a verified parked state.")
+    is_track_summary = snapshot.get("count_basis") == "filtered_track_ids"
+    is_detection_summary = snapshot.get("count_basis") == "detection_observations"
+    if is_detection_summary:
+        vehicle_count = int(snapshot.get("observation_count", vehicle_count) or 0)
+        st.subheader("Full-clip detection results")
+        st.caption(payload.get("analytics_note", "These are per-frame detections, not unique vehicle totals."))
+        kpis = st.columns(4)
+        kpis[0].metric("Vehicle detections", vehicle_count)
+        kpis[1].metric("Frames analyzed", snapshot.get("frames_processed", "—"))
+        kpis[2].metric("Frames with detections", snapshot.get("frames_with_detections", "—"))
+        frame_count = int(snapshot.get("frames_processed", 0) or 0)
+        kpis[3].metric("Average per frame", f"{vehicle_count / frame_count:.1f}" if frame_count else "—")
+        if counts:
+            st.markdown("**Vehicle-class detections across all frames**")
+            class_cols = st.columns(min(5, max(1, len(counts))))
+            for col, (name, value) in zip(class_cols, sorted(counts.items())):
+                col.metric(f"{name.replace('_', ' ').title()} detections", value)
+        st.info("Direction, road-segment, speed, and parked-versus-moving analytics were not measured in this full-clip detection run. The separate 45–60 second segment pilot had camera-map and calibration errors, so it is not presented as reliable traffic data.")
+        st.download_button(
+            "Download full analysis JSON",
+            summary.read_bytes(),
+            file_name=summary.name,
+            mime="application/json",
+            key=f"download-{summary.stem}",
+        )
+        return
+
+    st.subheader("Vehicles tracked in this clip" if is_track_summary else "Traffic at a glance")
+    caption = payload.get("analytics_note") or (
+        "Track IDs are filtered to reduce short false detections; camera movement and shot changes can still split one vehicle into multiple tracks."
+        if is_track_summary else
+        "Counts are a snapshot from the final processed frame; stationary is a motion estimate, not a verified parked state."
+    )
+    st.caption(caption)
     kpis = st.columns(4)
-    kpis[0].metric("Vehicles", vehicle_count)
-    kpis[1].metric("Moving", moving)
-    kpis[2].metric("Stationary", stationary)
+    kpis[0].metric("Vehicle tracks" if is_track_summary else "Vehicles", vehicle_count)
+    kpis[1].metric("Moving", "Not measured" if snapshot.get("moving_count") is None else moving)
+    kpis[2].metric("Stationary", "Not measured" if snapshot.get("stationary_count") is None else stationary)
     avg_speed_values = [state.get("speed_kmh") for state in states.values() if isinstance(state.get("speed_kmh"), (int, float))]
     kpis[3].metric("Average speed", f"{sum(avg_speed_values) / len(avg_speed_values):.1f} km/h" if avg_speed_values else "—")
 
@@ -191,6 +223,15 @@ def render_drone_traffic():
         saved_video, saved_summary = _result_paths(saved_id)
         st.video(str(saved_video), loop=True)
         _render_saved_analytics(saved_summary)
+        detections_csv = OUTPUTS / f"{saved_id}_traffic_detections.csv"
+        if detections_csv.is_file():
+            st.download_button(
+                "Download per-frame detections CSV",
+                detections_csv.read_bytes(),
+                file_name=detections_csv.name,
+                mime="text/csv",
+                key=f"detections-{saved_id}",
+            )
         app_base = _public_app_base_url()
         if app_base:
             query = urlencode({"mode": "drone_embed", "traffic_video": saved_id})
