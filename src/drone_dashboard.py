@@ -5,9 +5,14 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 PLATFORM_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = PLATFORM_ROOT / "results" / "drone_traffic"
+_video_with_analytics = components.declare_component(
+    "drone_video_with_analytics",
+    path=str(Path(__file__).with_name("drone_video_component")),
+)
 
 
 def _public_app_base_url():
@@ -71,7 +76,22 @@ def _saved_videos():
     return videos
 
 
-def _render_saved_analytics(summary):
+def _streamlit_media_url(video):
+    """Register a local video with Streamlit and return its browser URL."""
+    try:
+        from streamlit.runtime import runtime
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        context = get_script_run_ctx()
+        if context is None or not runtime.exists():
+            return None
+        coordinates = f"drone-traffic:{video.resolve()}"
+        return runtime.get_instance().media_file_mgr.add(str(video), "video/mp4", coordinates)
+    except (ImportError, RuntimeError, AttributeError):
+        return None
+
+
+def _render_saved_analytics(summary, video=None, component_key=None):
     """Render saved traffic analytics as readable KPI and segment cards."""
     if not summary.is_file():
         st.caption("No analytics summary is saved for this clip.")
@@ -118,14 +138,78 @@ def _render_saved_analytics(summary):
                     per_frame.index.name = "Frame"
                     per_frame["Total vehicles in frame"] = per_frame.sum(axis=1)
                     st.caption("Counts are detections visible in that individual frame. A vehicle can appear again in the next frame.")
+                    fps = float(payload.get("source_fps", 30) or 30)
+                    tracks_csv = OUTPUTS / f"{video_id}_direction_tracks.csv"
+                    tracks_by_frame = {}
+                    tracked = None
+                    if tracks_csv.is_file():
+                        try:
+                            tracked = pd.read_csv(
+                                tracks_csv,
+                                usecols=["frame", "track_id", "direction", "camera_compensation_reliable"],
+                            )
+                            span_by_track = tracked.groupby("track_id")["frame"].agg(lambda values: values.max() - values.min())
+                            median_track_seconds = float(span_by_track.median()) / fps if not span_by_track.empty else 0.0
+                            comp_values = tracked["camera_compensation_reliable"].astype(str).str.lower().isin({"true", "1"})
+                            comp_pct = 100.0 * float(comp_values.mean()) if len(comp_values) else 0.0
+                            for frame, current in tracked.groupby("frame", sort=False):
+                                reliable = current["camera_compensation_reliable"].astype(str).str.lower().isin({"true", "1"})
+                                visible = current.loc[reliable]
+                                directions = visible["direction"].fillna("unknown").str.lower().value_counts()
+                                tracks_by_frame[int(frame)] = {
+                                    "tracked": int(visible["track_id"].nunique()),
+                                    "moving": sum(int(directions.get(name, 0)) for name in ("left", "right", "up", "down")),
+                                    "stationary": int(directions.get("stationary", 0)),
+                                    "uncertain": int(directions.get("unknown", 0)),
+                                    "directions": {name: int(directions.get(name, 0)) for name in ("left", "right", "up", "down") if directions.get(name, 0)},
+                                    "reliable": int(reliable.sum()),
+                                    "visible": int(len(reliable)),
+                                }
+                        except (ImportError, OSError, ValueError, KeyError) as exc:
+                            st.warning(f"Could not load the saved motion estimates: {exc}")
+                            tracked = None
+
+                    per_frame = per_frame.reindex(range(max_frame + 1), fill_value=0)
+                    classes = [name for name in per_frame.columns if name != "Total vehicles in frame"]
+                    frame_payload = []
+                    for frame in range(max_frame + 1):
+                        class_counts = {str(name): int(per_frame.iloc[frame][name]) for name in classes if per_frame.iloc[frame][name]}
+                        motion = tracks_by_frame.get(frame, {})
+                        frame_payload.append({
+                            "count": int(per_frame.iloc[frame]["Total vehicles in frame"]),
+                            "classes": class_counts,
+                            "tracked": motion.get("tracked"),
+                            "moving": motion.get("moving"),
+                            "stationary": motion.get("stationary"),
+                            "uncertain": motion.get("uncertain"),
+                            "directions": motion.get("directions", {}),
+                        })
+
+                    video_url = _streamlit_media_url(video) if video else None
+                    if video_url:
+                        playback_time = _video_with_analytics(
+                            video_url=video_url,
+                            frames=frame_payload,
+                            fps=fps,
+                            duration=max_frame / fps,
+                            key=component_key or f"drone-video-{video_id}",
+                            default=0.0,
+                            loop=True,
+                        )
+                        try:
+                            selected_frame = min(max_frame, max(0, int(float(playback_time or 0) * fps)))
+                        except (TypeError, ValueError):
+                            selected_frame = 0
+                    else:
+                        selected_frame = st.slider(
+                            "Inspect frame",
+                            min_value=0,
+                            max_value=max_frame,
+                            value=min(2500, max_frame),
+                            key=f"frame-inspector-{video_id}",
+                        )
+                        st.video(str(video), loop=True) if video else None
                     st.line_chart(per_frame[["Total vehicles in frame"]], height=220)
-                    selected_frame = st.slider(
-                        "Inspect frame",
-                        min_value=0,
-                        max_value=max_frame,
-                        value=min(2500, max_frame),
-                        key=f"frame-inspector-{video_id}",
-                    )
                     class_row = per_frame.loc[selected_frame].drop(labels=["Total vehicles in frame"])
                     detected_classes = [(name, int(value)) for name, value in class_row.items() if value]
                     frame_cols = st.columns(min(6, max(1, len(detected_classes) + 1)))
@@ -133,8 +217,6 @@ def _render_saved_analytics(summary):
                     for col, (name, value) in zip(frame_cols[1:], detected_classes):
                         col.metric(name.replace("_", " ").title(), value)
 
-                    fps = float(payload.get("source_fps", 30) or 30)
-                    tracks_csv = OUTPUTS / f"{video_id}_direction_tracks.csv"
                     if tracks_csv.is_file():
                         try:
                             tracked = pd.read_csv(
@@ -271,8 +353,7 @@ def render_drone_embed(video_id):
         return
 
     st.title("🚁 Drone Traffic Analysis")
-    st.video(str(video), loop=True)
-    _render_saved_analytics(summary)
+    _render_saved_analytics(summary, video=video, component_key=f"drone-embed-{video_id}")
 
 
 def render_drone_traffic():
@@ -294,8 +375,7 @@ def render_drone_traffic():
             key="drone_saved_video_choice",
         )
         saved_video, saved_summary = _result_paths(saved_id)
-        st.video(str(saved_video), loop=True)
-        _render_saved_analytics(saved_summary)
+        _render_saved_analytics(saved_summary, video=saved_video, component_key=f"drone-video-{saved_id}")
         detections_csv = OUTPUTS / f"{saved_id}_traffic_detections.csv"
         if detections_csv.is_file():
             st.download_button(
