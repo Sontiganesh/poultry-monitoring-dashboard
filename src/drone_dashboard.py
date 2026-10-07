@@ -289,6 +289,8 @@ def _render_saved_analytics(summary, video=None, component_key=None,
                             camera_id=camera_id or video_id,
                             source_video=video_id,
                             webhook_interval_seconds=30,
+                            height=700 if video_only else 150,
+                            scrolling=False,
                         )
                     else:
                         selected_frame = st.slider(
@@ -379,6 +381,8 @@ def _render_saved_analytics(summary, video=None, component_key=None,
                         camera_id=camera_id or video_id,
                         source_video=video_id,
                         webhook_interval_seconds=30,
+                        height=700,
+                        scrolling=False,
                     )
                 elif video:
                     st.video(str(video), loop=True)
