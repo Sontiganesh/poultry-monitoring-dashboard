@@ -103,7 +103,7 @@ def _render_saved_analytics(summary):
         vehicle_count = int(snapshot.get("observation_count", vehicle_count) or 0)
         video_id = summary.name.removesuffix("_traffic_summary.json")
         st.subheader("Per-frame traffic")
-        st.caption(payload.get("analytics_note", "These are per-frame detections, not unique vehicle totals."))
+        st.caption("Inspect the vehicle count and class mix for each video frame. Motion and direction are estimated separately from tracked detections; direction is relative to the screen.")
         frame_count = int(snapshot.get("frames_processed", 0) or 0)
         detections_csv = OUTPUTS / f"{video_id}_traffic_detections.csv"
         if detections_csv.is_file():
@@ -141,6 +141,10 @@ def _render_saved_analytics(summary):
                                 tracks_csv,
                                 usecols=["frame", "track_id", "direction", "camera_compensation_reliable"],
                             )
+                            span_by_track = tracked.groupby("track_id")["frame"].agg(lambda values: values.max() - values.min())
+                            median_track_seconds = float(span_by_track.median()) / fps if not span_by_track.empty else 0.0
+                            comp_values = tracked["camera_compensation_reliable"].astype(str).str.lower().isin({"true", "1"})
+                            comp_pct = 100.0 * float(comp_values.mean()) if len(comp_values) else 0.0
                             current = tracked.loc[tracked["frame"].astype(int) == selected_frame]
                             reliable = current["camera_compensation_reliable"].astype(str).str.lower().isin({"true", "1"})
                             current = current.loc[reliable]
@@ -156,14 +160,14 @@ def _render_saved_analytics(summary):
                             motion_cols[3].metric("Uncertain", unknown)
                             directional = [f"{label.title()} {int(directions.get(label, 0))}" for label in ("left", "right", "up", "down") if directions.get(label, 0)]
                             st.caption("Screen direction: " + (" · ".join(directional) if directional else "no confident direction in this frame"))
-                            st.info("Motion is estimated relative to the moving camera and shown for this frame only. Short track IDs often split one vehicle, and a stopped queue cannot be reliably distinguished from parked vehicles in this clip.")
+                            st.info(f"Motion uses camera compensation marked reliable on {comp_pct:.1f}% of tracked observations. Track IDs last a median {median_track_seconds:.2f} seconds, so counts are only a frame snapshot—not unique trips. ‘Stationary’ means low movement; a queue stop cannot be confirmed as parked.")
                         except (ImportError, OSError, ValueError, KeyError) as exc:
                             st.warning(f"Could not load the saved motion estimates: {exc}")
                     else:
                         st.info("Moving/stationary and direction snapshots need the saved ByteTrack motion results.")
 
                     st.markdown("**Segment blockage outlook**")
-                    st.caption("No 30-second or 1-minute forecast is available: this clip changes camera views, and its earlier road sections were not aligned reliably. A fixed segment map must be calibrated before blockage timing can be estimated.")
+                    st.caption("No 30-second or 1-minute forecast yet. The video changes camera views and the old road sections drifted off the roadway. Calibrated segment boundaries and sustained occupancy history are needed to estimate a time to blockage.")
 
                     with st.expander("Whole-video detection totals"):
                         st.caption("A sum of detections across the entire clip; repeated sightings of the same vehicle are included.")
