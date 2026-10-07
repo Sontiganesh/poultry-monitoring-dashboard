@@ -101,7 +101,8 @@ def _render_saved_analytics(summary):
     is_detection_summary = snapshot.get("count_basis") == "detection_observations"
     if is_detection_summary:
         vehicle_count = int(snapshot.get("observation_count", vehicle_count) or 0)
-        st.subheader("Full-clip detection results")
+        video_id = summary.name.removesuffix("_traffic_summary.json")
+        st.subheader("Traffic over time")
         st.caption(payload.get("analytics_note", "These are per-frame detections, not unique vehicle totals."))
         kpis = st.columns(4)
         kpis[0].metric("Vehicle detections", vehicle_count)
@@ -114,7 +115,29 @@ def _render_saved_analytics(summary):
             class_cols = st.columns(min(5, max(1, len(counts))))
             for col, (name, value) in zip(class_cols, sorted(counts.items())):
                 col.metric(f"{name.replace('_', ' ').title()} detections", value)
-        st.info("Direction, road-segment, speed, and parked-versus-moving analytics were not measured in this full-clip detection run. The separate 45–60 second segment pilot had camera-map and calibration errors, so it is not presented as reliable traffic data.")
+        detections_csv = OUTPUTS / f"{video_id}_traffic_detections.csv"
+        if detections_csv.is_file():
+            try:
+                import pandas as pd
+                frame_data = pd.read_csv(detections_csv, usecols=["timestamp", "class_name"])
+                if not frame_data.empty:
+                    frame_data["second"] = frame_data["timestamp"].astype(float).floordiv(1).astype(int)
+                    per_second = frame_data.groupby(["second", "class_name"]).size().unstack(fill_value=0)
+                    st.markdown("**Vehicles detected in each second**")
+                    st.caption("These are detections visible in sampled frames; the same vehicle can be counted again in later seconds.")
+                    st.line_chart(per_second, height=260)
+
+                    st.markdown("**Traffic states and segment outlook**")
+                    status = st.columns(4)
+                    status[0].metric("Moving vehicles", "Needs tracking")
+                    status[1].metric("Stationary / parked", "Not verified")
+                    status[2].metric("Travel direction", "Not measured")
+                    status[3].metric("Blockage forecast", "Not available")
+                    st.info("This full-clip run detects vehicles but does not track them across frames. The 45–60 s pilot is not reliable for motion or segments: the camera pans, its road sections drift off the road, and its IDs fragment. A 30 s / 1 min segment warning would be a guess with this map. Calibrate fixed road sections for a stable view, then use tracked movement and occupancy history to issue a forecast.")
+            except (ImportError, OSError, ValueError, KeyError) as exc:
+                st.warning(f"Could not build the per-second chart from the saved detections: {exc}")
+        else:
+            st.info("Direction, road-segment, speed, and parked-versus-moving analytics were not measured in this detection-only run.")
         st.download_button(
             "Download full analysis JSON",
             summary.read_bytes(),
