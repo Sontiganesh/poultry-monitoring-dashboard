@@ -14,12 +14,6 @@ _video_with_analytics = components.declare_component(
     "drone_video_with_analytics_v2",
     path=str(Path(__file__).with_name("drone_video_component")),
 )
-_drone_video_only = components.declare_component(
-    "drone_video_only_v1",
-    path=str(Path(__file__).with_name("drone_video_component")),
-    height=700,
-    scrolling=False,
-)
 
 
 def _public_app_base_url():
@@ -282,8 +276,7 @@ def _render_saved_analytics(summary, video=None, component_key=None,
 
                     video_url = _streamlit_media_url(video) if video else None
                     if video_url:
-                        player_component = _drone_video_only if video_only else _video_with_analytics
-                        player_component(
+                        _video_with_analytics(
                             video_url=video_url,
                             frames=frame_payload,
                             fps=fps,
@@ -373,7 +366,7 @@ def _render_saved_analytics(summary, video=None, component_key=None,
             if video_only:
                 video_url = _streamlit_media_url(video) if video else None
                 if video_url:
-                    _drone_video_only(
+                    _video_with_analytics(
                         video_url=video_url,
                         frames=[],
                         fps=float(payload.get("source_fps", 30) or 30),

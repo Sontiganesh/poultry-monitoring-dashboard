@@ -39,7 +39,7 @@
     let fps = 30;
     let loopEnabled = true;
     let lastHeight = 0;
-    let displayAnalytics = true;
+    let displayAnalytics = false;
     let webhookEnabled = false;
     let webhookIntervalSeconds = 30;
     let lastWebhookSentAt = 0;
@@ -52,10 +52,8 @@
     video.muted = true;
 
     function sendHeight() {
-      // Video-only embeds use a fixed component height. Measuring content whose
-      // height is based on the iframe viewport creates a resize feedback loop.
-      if (!displayAnalytics) return;
-      const height = document.documentElement.scrollHeight + 8;
+      // A fixed height avoids a resize feedback loop for the fullscreen player.
+      const height = displayAnalytics ? document.documentElement.scrollHeight + 8 : 700;
       if (height === lastHeight) return;
       lastHeight = height;
       window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setFrameHeight", height}, "*");
