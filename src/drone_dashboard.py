@@ -119,17 +119,26 @@ def _render_saved_analytics(summary, video=None, component_key=None):
     vehicle_count = sum(int(n or 0) for n in counts.values())
     is_track_summary = snapshot.get("count_basis") == "filtered_track_ids"
     is_detection_summary = snapshot.get("count_basis") == "detection_observations"
-    if is_detection_summary:
+    video_id = summary.name.removesuffix("_traffic_summary.json")
+    detections_csv = OUTPUTS / f"{video_id}_traffic_detections.csv"
+    tracks_csv = OUTPUTS / f"{video_id}_direction_tracks.csv"
+    has_frame_data = detections_csv.is_file() or tracks_csv.is_file()
+    if is_detection_summary or has_frame_data:
         vehicle_count = int(snapshot.get("observation_count", vehicle_count) or 0)
-        video_id = summary.name.removesuffix("_traffic_summary.json")
         st.subheader("Per-frame traffic")
         st.caption("Inspect the vehicle count and class mix for each video frame. Motion and direction are estimated separately from tracked detections; direction is relative to the screen.")
-        frame_count = int(snapshot.get("frames_processed", 0) or 0)
-        detections_csv = OUTPUTS / f"{video_id}_traffic_detections.csv"
-        if detections_csv.is_file():
+        frame_count = int(snapshot.get("frames_processed", payload.get("frames_processed", 0)) or 0)
+        if has_frame_data:
             try:
                 import pandas as pd
-                frame_data = pd.read_csv(detections_csv, usecols=["frame", "timestamp", "class_name"])
+                if detections_csv.is_file():
+                    frame_data = pd.read_csv(detections_csv, usecols=["frame", "timestamp", "class_name"])
+                else:
+                    # Older runs saved ByteTrack rows but not the detector CSV.
+                    # Each track row is one vehicle observed in that frame.
+                    frame_data = pd.read_csv(tracks_csv, usecols=["frame", "track_id", "class_name"])
+                    if not frame_data.empty:
+                        frame_data["frame"] = frame_data["frame"].astype(int) - int(frame_data["frame"].min())
                 if not frame_data.empty:
                     frame_data["frame"] = frame_data["frame"].astype(int)
                     per_frame = frame_data.groupby(["frame", "class_name"]).size().unstack(fill_value=0)
@@ -139,21 +148,22 @@ def _render_saved_analytics(summary, video=None, component_key=None):
                     per_frame["Total vehicles in frame"] = per_frame.sum(axis=1)
                     st.caption("Counts are detections visible in that individual frame. A vehicle can appear again in the next frame.")
                     fps = float(payload.get("source_fps", 30) or 30)
-                    tracks_csv = OUTPUTS / f"{video_id}_direction_tracks.csv"
                     tracks_by_frame = {}
                     tracked = None
                     if tracks_csv.is_file():
                         try:
-                            tracked = pd.read_csv(
-                                tracks_csv,
-                                usecols=["frame", "track_id", "direction", "camera_compensation_reliable"],
-                            )
+                            track_columns = set(pd.read_csv(tracks_csv, nrows=0).columns)
+                            usecols = [name for name in ("frame", "track_id", "direction", "class_name", "camera_compensation_reliable") if name in track_columns]
+                            tracked = pd.read_csv(tracks_csv, usecols=usecols)
+                            if not detections_csv.is_file() and not tracked.empty:
+                                tracked["frame"] = tracked["frame"].astype(int) - int(tracked["frame"].min())
                             span_by_track = tracked.groupby("track_id")["frame"].agg(lambda values: values.max() - values.min())
                             median_track_seconds = float(span_by_track.median()) / fps if not span_by_track.empty else 0.0
-                            comp_values = tracked["camera_compensation_reliable"].astype(str).str.lower().isin({"true", "1"})
-                            comp_pct = 100.0 * float(comp_values.mean()) if len(comp_values) else 0.0
+                            has_reliability = "camera_compensation_reliable" in tracked.columns
+                            comp_values = tracked["camera_compensation_reliable"].astype(str).str.lower().isin({"true", "1"}) if has_reliability else None
+                            comp_pct = 100.0 * float(comp_values.mean()) if comp_values is not None and len(comp_values) else None
                             for frame, current in tracked.groupby("frame", sort=False):
-                                reliable = current["camera_compensation_reliable"].astype(str).str.lower().isin({"true", "1"})
+                                reliable = current["camera_compensation_reliable"].astype(str).str.lower().isin({"true", "1"}) if has_reliability else pd.Series(True, index=current.index)
                                 visible = current.loc[reliable]
                                 directions = visible["direction"].fillna("unknown").str.lower().value_counts()
                                 tracks_by_frame[int(frame)] = {
@@ -239,7 +249,8 @@ def _render_saved_analytics(summary, video=None, component_key=None):
                             motion_cols[3].metric("Uncertain", unknown)
                             directional = [f"{label.title()} {int(directions.get(label, 0))}" for label in ("left", "right", "up", "down") if directions.get(label, 0)]
                             st.caption("Screen direction: " + (" · ".join(directional) if directional else "no confident direction in this frame"))
-                            st.info(f"Motion uses camera compensation marked reliable on {comp_pct:.1f}% of tracked observations. Track IDs last a median {median_track_seconds:.2f} seconds, so counts are only a frame snapshot—not unique trips. ‘Stationary’ means low movement; a queue stop cannot be confirmed as parked.")
+                            reliability_note = f"Camera compensation was marked reliable on {comp_pct:.1f}% of tracked observations. " if comp_pct is not None else "Camera compensation reliability was not saved for this run. "
+                            st.info(f"{reliability_note}Track IDs last a median {median_track_seconds:.2f} seconds, so counts are only a frame snapshot—not unique trips. ‘Stationary’ means low movement; a queue stop cannot be confirmed as parked.")
                         except (ImportError, OSError, ValueError, KeyError) as exc:
                             st.warning(f"Could not load the saved motion estimates: {exc}")
                     elif not tracks_csv.is_file() and not video_url:
@@ -261,7 +272,7 @@ def _render_saved_analytics(summary, video=None, component_key=None):
                             for col, (name, value) in zip(class_cols, sorted(counts.items())):
                                 col.metric(f"{name.replace('_', ' ').title()} detections", value)
             except (ImportError, OSError, ValueError, KeyError) as exc:
-                st.warning(f"Could not build the per-second chart from the saved detections: {exc}")
+                st.warning(f"Could not build per-frame analytics from the saved detections and tracks: {exc}")
         else:
             st.info("Direction, road-segment, speed, and parked-versus-moving analytics were not measured in this detection-only run.")
         st.download_button(
