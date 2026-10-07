@@ -10,7 +10,7 @@ import streamlit.components.v1 as components
 PLATFORM_ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = PLATFORM_ROOT / "results" / "drone_traffic"
 _video_with_analytics = components.declare_component(
-    "drone_video_with_analytics",
+    "drone_video_with_analytics_v2",
     path=str(Path(__file__).with_name("drone_video_component")),
 )
 
