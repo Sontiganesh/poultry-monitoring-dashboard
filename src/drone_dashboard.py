@@ -204,11 +204,6 @@ def _render_saved_analytics(summary, video=None, component_key=None):
                             key=f"frame-inspector-{video_id}",
                         )
                         st.video(str(video), loop=True) if video else None
-                    chart_stride = max(1, int(round(fps)))
-                    per_second = per_frame["Total vehicles in frame"].groupby(per_frame.index // chart_stride).mean()
-                    per_second.index.name = "Second"
-                    st.caption("Trend chart shows average detections per second. The player cards use the exact frame currently playing.")
-                    st.line_chart(per_second, height=220)
                     if video_url:
                         st.caption("The player shows saved detections and motion estimates for its current playback second.")
                     else:
