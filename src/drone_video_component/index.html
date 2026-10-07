@@ -17,7 +17,7 @@
   </style>
 </head>
 <body>
-  <video id="video" controls playsinline></video>
+  <video id="video" controls playsinline autoplay muted></video>
   <div class="status" id="status">Loading video…</div>
   <section class="summary" aria-live="polite">
     <h3>Traffic at this moment</h3>
@@ -36,6 +36,10 @@
     let fps = 30;
     let loopEnabled = true;
     let lastHeight = 0;
+
+    // Start demos immediately; muted playback is allowed by modern browsers.
+    video.autoplay = true;
+    video.muted = true;
 
     function sendHeight() {
       const height = document.documentElement.scrollHeight + 8;
