@@ -1,0 +1,16 @@
+[Unit]
+Description=Drone Traffic Interactive Web Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=azureuser
+WorkingDirectory=/home/azureuser/poultry-monitoring-dashboard
+Environment=DRONE_RESULTS_DIR=/home/azureuser/poultry-monitoring-dashboard/results/drone_traffic
+Environment=DRONE_WEB_PORT=8503
+ExecStart=/home/azureuser/poultry-monitoring-dashboard/venv/bin/python /home/azureuser/poultry-monitoring-dashboard/drone_web/app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

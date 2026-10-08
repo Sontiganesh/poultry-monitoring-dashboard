@@ -567,6 +567,14 @@ def render_drone_embed(video_id, webhook_url="", camera_id="", video_only=False)
 def render_drone_traffic():
     st.title("🚁 Saved Drone Traffic Results")
     st.caption("Choose a processed video to replay it and review its saved traffic analytics.")
+    app_base = _public_app_base_url()
+    if app_base:
+        parsed_base = urlsplit(app_base)
+        web_host = parsed_base.hostname or ""
+        if ":" in web_host and not web_host.startswith("["):
+            web_host = f"[{web_host}]"
+        standalone_url = urlunsplit((parsed_base.scheme or "http", f"{web_host}:8503", "", "", ""))
+        st.markdown(f"[Open interactive Drone Traffic dashboard ↗]({standalone_url})")
 
     with st.expander("Webhook updates and video-only embed", expanded=True):
         webhook_url = st.text_input(

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07111e">
+  <title>Roadwatch · Drone Traffic</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="rail">
+      <a class="brand" href="/" aria-label="Roadwatch home"><span class="brand-mark">R</span><span class="brand-name">roadwatch<span>.</span></span></a>
+      <div class="rail-label">WORKSPACE</div>
+      <a class="nav-item active" href="#"><span class="nav-icon">◫</span> Traffic overview</a>
+      <div class="rail-foot"><span class="pulse"></span> Analytics ready</div>
+    </aside>
+    <main>
+      <header class="topbar">
+        <div class="crumb">Monitoring <span>/</span> <b>Drone traffic</b></div>
+        <div class="top-actions"><span class="live-pill"><i></i> SAVED ANALYSIS</span><span class="avatar">RW</span></div>
+      </header>
+      <div class="content">
+        <section class="heading">
+          <div><div class="eyebrow">ROAD INTELLIGENCE <span>•</span> VIDEO REVIEW</div><h1>Traffic, in motion.</h1><p>Review analyzed drone footage and explore the traffic picture frame by frame.</p></div>
+          <div class="camera-chip"><span class="camera-icon">⌖</span><div><small>CAMERA VIEW</small><strong id="cameraLabel">CAM_02</strong></div><span class="chevron">⌄</span></div>
+        </section>
+
+        <section class="video-card">
+          <div class="video-head">
+            <div class="video-title"><span class="film-icon">▶</span><div><strong id="videoTitle">Loading videos…</strong><small id="videoMeta">Select a clip to review its saved analysis</small></div></div>
+            <div class="video-controls"><label for="videoSelect">VIDEO</label><select id="videoSelect" aria-label="Select video"></select><button id="loopButton" class="icon-button active" title="Toggle loop" aria-label="Toggle loop">↻</button></div>
+          </div>
+          <div class="player-wrap"><video id="video" controls playsinline muted preload="metadata"></video><div id="videoLoading" class="video-loading"><span class="spinner"></span><span>Loading clip…</span></div></div>
+          <div class="player-foot"><div class="playback-clock"><span class="play-dot"></span><span id="playbackTime">00:00</span><span class="clock-divider">/</span><span id="durationTime">00:00</span></div><span class="hint">Analytics follow the playing frame</span></div>
+        </section>
+
+        <section class="section-head"><div><div class="eyebrow">LIVE PLAYBACK</div><h2>What’s on the road</h2></div><span class="frame-badge"><span class="pulse"></span> FRAME <b id="frameLabel">—</b></span></section>
+        <section class="metric-grid">
+          <article class="metric-card primary"><div class="metric-label">VEHICLES IN FRAME <span class="metric-icon">◉</span></div><div class="metric-value" id="frameVehicles">—</div><div class="metric-sub">Visible in the current frame</div></article>
+          <article class="metric-card"><div class="metric-label">MOVING <span class="metric-icon green">↗</span></div><div class="metric-value" id="movingCount">—</div><div class="metric-sub">Tracked motion estimate</div></article>
+          <article class="metric-card"><div class="metric-label">STATIONARY <span class="metric-icon amber">Ⅱ</span></div><div class="metric-value" id="stationaryCount">—</div><div class="metric-sub">May include vehicles in a queue</div></article>
+          <article class="metric-card"><div class="metric-label">TRACKED <span class="metric-icon violet">⌗</span></div><div class="metric-value" id="trackedCount">—</div><div class="metric-sub">Vehicle IDs visible now</div></article>
+        </section>
+
+        <section class="lower-grid">
+          <article class="panel segment-panel"><div class="panel-head"><div><div class="eyebrow">ROAD BREAKDOWN</div><h2>Segment conditions</h2></div><span class="subtle-tag">Saved run snapshot</span></div><div id="segments" class="segments"><div class="empty">Choose a video to see its segment results.</div></div><p class="panel-note">Segment color comes from the saved congestion estimate. Use camera-calibrated segments for operational decisions.</p></article>
+          <article class="panel"><div class="panel-head"><div><div class="eyebrow">CURRENT FRAME</div><h2>Vehicle mix</h2></div><span class="mix-icon">◌</span></div><div id="classMix" class="class-mix"><div class="empty">Counts will follow playback.</div></div><div class="direction-block"><div class="direction-title">DIRECTION SNAPSHOT <span>SCREEN RELATIVE</span></div><div id="directions" class="direction-list"><span class="muted">No confident directions in this frame</span></div></div></article>
+        </section>
+
+        <section class="section-head summary-heading"><div><div class="eyebrow">ANALYSIS CONTEXT</div><h2>About this run</h2></div></section>
+        <section class="summary-grid">
+          <article class="summary-cell"><small>FRAME COVERAGE</small><strong id="framesProcessed">—</strong><span>frames analyzed</span></article>
+          <article class="summary-cell"><small>DETECTION OBSERVATIONS</small><strong id="observationCount">—</strong><span>repeated sightings included</span></article>
+          <article class="summary-cell"><small>TRACKING QUALITY</small><strong id="trackQuality">—</strong><span id="trackQualityNote">Not measured for this run</span></article>
+          <article class="summary-cell"><small>SPEED BASIS</small><strong id="speedBasis">—</strong><span>camera calibration dependent</span></article>
+        </section>
+        <footer><span class="footer-brand">roadwatch<span>.</span></span><span>Traffic estimates are observational and camera-view dependent.</span><span>Updated with playback <b id="lastUpdated">—</b></span></footer>
+      </div>
+    </main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
