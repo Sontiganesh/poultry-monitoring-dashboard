@@ -68,7 +68,7 @@ function snapshotEvent(force=false){
   const frame=getFrame()||{};
   sendWebhook({event:"drone_traffic_playback_snapshot",camera_id:new URLSearchParams(location.search).get("camera")||"CAM_02",timestamp:new Date().toISOString(),source_video:(summary.full_inference_summary||{}).video||summary.source||current.title,playback_time_sec:Number(video.currentTime.toFixed(2)),frame_index:frame.index??null,total_count:frame.count??0,vehicle_count:frame.count??0,class_counts:frame.classes||{},tracked_count:frame.tracked??null,moving_count:frame.moving??null,stationary_count:frame.stationary??null,uncertain_count:frame.uncertain??null,direction_counts:frame.directions||{}});
 }
-video.addEventListener("loadedmetadata",()=>{loading.classList.add("hidden");byId("durationTime").textContent=time(video.duration);renderFrame();summaryEvent();snapshotEvent(true);video.play().catch(()=>{})});
+video.addEventListener("loadedmetadata",()=>{loading.classList.add("hidden");byId("durationTime").textContent=time(video.duration);if(summary&&current)renderSummary(summary,current);renderFrame();summaryEvent();snapshotEvent(true);video.play().catch(()=>{})});
 video.addEventListener("waiting",()=>loading.classList.remove("hidden"));video.addEventListener("playing",()=>loading.classList.add("hidden"));
 video.addEventListener("timeupdate",()=>{renderFrame();snapshotEvent()});video.addEventListener("seeked",renderFrame);
 video.addEventListener("error",()=>{loading.classList.remove("hidden");loading.innerHTML="<span>Could not load this video.</span>"});

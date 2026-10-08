@@ -40,13 +40,18 @@ def videos():
             details = data.get("full_inference_summary") or {}
             final = data.get("final_frame_analytics") or {}
             source = details.get("video") or data.get("source") or video_id.replace("_", " ").title()
+            source_path = Path(str(source))
+            if str(source).startswith("/tmp/"):
+                source = source_path.stem
+            elif str(source).lower().endswith((".mp4", ".mov", ".avi", ".mkv")):
+                source = source_path.stem
             output.append({
                 "id": video_id,
                 "title": source,
                 "video_url": f"/media/{video_id}",
                 "duration_sec": details.get("duration_sec"),
                 "frames_processed": data.get("frames_processed") or final.get("frames_processed") or details.get("frames_processed"),
-                "vehicle_observations": final.get("observation_count") or details.get("detection_observations_total"),
+                "vehicle_observations": final.get("observation_count") or details.get("detection_observations_total") or final.get("vehicle_count_final_frame"),
             })
         except (OSError, ValueError):
             continue
